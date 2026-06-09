@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct SceneZeroApp: App {
@@ -13,5 +14,6 @@ struct SceneZeroApp: App {
         WindowGroup {
             ContentView()
         }
+        .modelContainer(for: LookbookEntry.self)
     }
 }
