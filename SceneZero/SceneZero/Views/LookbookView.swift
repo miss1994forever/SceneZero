@@ -115,6 +115,8 @@ struct LookbookDetailView: View {
                     metadataRow("Shot", entry.shotType)
                     metadataRow("Light", entry.lightPreset)
                     metadataRow("Color", entry.colorTemperature)
+                    metadataRow("Intensity", "\(Int(entry.lightIntensity * 100))%")
+                    metadataRow("Spread", "\(Int(entry.lightRadius * 100))%")
                     metadataRow("Look", entry.filterName)
                 }
                 .font(.subheadline)

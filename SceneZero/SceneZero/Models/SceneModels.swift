@@ -1,5 +1,7 @@
 import Foundation
+import simd
 import SwiftData
+import SwiftUI
 import UIKit
 
 enum SceneTool: String, CaseIterable, Identifiable, Codable {
@@ -36,6 +38,41 @@ enum LightPreset: String, CaseIterable, Identifiable, Codable {
         case .frontSoft: "soft frontal light"
         case .topDown: "top light from above"
         case .lowSide: "low side light"
+        }
+    }
+
+    var overlayStartPoint: UnitPoint {
+        switch self {
+        case .keyLeft: .topLeading
+        case .rimRight: .topTrailing
+        case .frontSoft: .center
+        case .topDown: .top
+        case .lowSide: .bottomLeading
+        }
+    }
+
+    var overlayEndPoint: UnitPoint {
+        switch self {
+        case .keyLeft: .bottomTrailing
+        case .rimRight: .bottomLeading
+        case .frontSoft: .center
+        case .topDown: .bottom
+        case .lowSide: .topTrailing
+        }
+    }
+
+    var lightRotation: simd_quatf {
+        switch self {
+        case .keyLeft:
+            simd_quatf(angle: -.pi / 5, axis: SIMD3<Float>(0, 1, 0))
+        case .rimRight:
+            simd_quatf(angle: .pi * 0.75, axis: SIMD3<Float>(0, 1, 0))
+        case .frontSoft:
+            simd_quatf(angle: 0, axis: SIMD3<Float>(0, 1, 0))
+        case .topDown:
+            simd_quatf(angle: -.pi / 2, axis: SIMD3<Float>(1, 0, 0))
+        case .lowSide:
+            simd_quatf(angle: -.pi / 4, axis: SIMD3<Float>(0, 1, 0))
         }
     }
 }
@@ -109,6 +146,11 @@ struct SceneObjectRecord: Codable, Identifiable {
     var relativeX: Float
     var relativeY: Float
     var relativeZ: Float
+    var scale: Float
+    var lightPreset: LightPreset?
+    var colorTemperature: ColorTemperature?
+    var lightIntensity: Double?
+    var lightRadius: Double?
     var yaw: Float
 }
 
@@ -120,6 +162,9 @@ struct CapturedScene: Identifiable {
     let shotType: ShotType
     let lightPreset: LightPreset
     let colorTemperature: ColorTemperature
+    let lightIntensity: Double
+    let lightRadius: Double
+    let shouldRenderLightingOverlay: Bool
     let layoutRecords: [SceneObjectRecord]
 }
 
@@ -133,6 +178,8 @@ final class LookbookEntry {
     var shotType: String
     var lightPreset: String
     var colorTemperature: String
+    var lightIntensity: Double = 0.65
+    var lightRadius: Double = 0.55
     var filterName: String
     var layoutJSON: String
 
@@ -145,6 +192,8 @@ final class LookbookEntry {
         shotType: String,
         lightPreset: String,
         colorTemperature: String,
+        lightIntensity: Double = 0.65,
+        lightRadius: Double = 0.55,
         filterName: String,
         layoutJSON: String
     ) {
@@ -156,6 +205,8 @@ final class LookbookEntry {
         self.shotType = shotType
         self.lightPreset = lightPreset
         self.colorTemperature = colorTemperature
+        self.lightIntensity = lightIntensity
+        self.lightRadius = lightRadius
         self.filterName = filterName
         self.layoutJSON = layoutJSON
     }

@@ -9,11 +9,22 @@ struct MainView: View {
 
     private let filterService = FilterService()
     private let imageStorage = ImageStorageService()
+    private let lightingOverlayService = LightingOverlayService()
 
     var body: some View {
         ZStack {
             ARViewContainer(controller: controller)
                 .ignoresSafeArea()
+
+            LightingOverlayView(
+                lightPreset: controller.lightPreset,
+                colorTemperature: controller.colorTemperature,
+                intensity: controller.lightIntensity,
+                radius: controller.lightRadius,
+                isVisible: controller.hasLightingOverlay
+            )
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
 
             VStack(spacing: 0) {
                 topBar
@@ -67,7 +78,15 @@ struct MainView: View {
         controller.capture { result in
             switch result {
             case .success(let captured):
-                let filteredImage = filterService.apply(captured.filterPreset, to: captured.image)
+                let litImage = lightingOverlayService.applyOverlay(
+                    to: captured.image,
+                    lightPreset: captured.lightPreset,
+                    colorTemperature: captured.colorTemperature,
+                    intensity: captured.lightIntensity,
+                    radius: captured.lightRadius,
+                    isEnabled: captured.shouldRenderLightingOverlay
+                )
+                let filteredImage = filterService.apply(captured.filterPreset, to: litImage)
                 do {
                     let imagePath = try imageStorage.save(filteredImage)
                     let layoutData = try JSONEncoder().encode(captured.layoutRecords)
@@ -79,6 +98,8 @@ struct MainView: View {
                         shotType: captured.shotType.rawValue,
                         lightPreset: captured.lightPreset.rawValue,
                         colorTemperature: captured.colorTemperature.rawValue,
+                        lightIntensity: captured.lightIntensity,
+                        lightRadius: captured.lightRadius,
                         filterName: captured.filterPreset.rawValue,
                         layoutJSON: layoutJSON
                     )
