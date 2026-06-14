@@ -7,7 +7,7 @@ import UIKit
 enum SceneTool: String, CaseIterable, Identifiable, Codable {
     case subject = "Subject"
     case prop = "Prop"
-    case camera = "Camera"
+    case frame = "Frame"
     case light = "Light"
 
     var id: String { rawValue }
@@ -16,8 +16,122 @@ enum SceneTool: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .subject: "person.crop.rectangle"
         case .prop: "cube"
-        case .camera: "video"
+        case .frame: "viewfinder"
         case .light: "lightbulb"
+        }
+    }
+}
+
+enum AssetCategory: String, CaseIterable, Identifiable, Codable {
+    case subject = "Subject"
+    case prop = "Prop"
+    case lightMarker = "Light Marker"
+
+    var id: String { rawValue }
+}
+
+enum FallbackPrimitive: String, Codable {
+    case box
+    case verticalBox
+    case sphere
+}
+
+enum AssetPreset: String, CaseIterable, Identifiable, Codable {
+    case subjectBlock = "Subject Block"
+    case human = "Human"
+    case propBox = "Prop Box"
+    case chair = "Chair"
+    case table = "Table"
+    case sofa = "Sofa"
+    case lampStand = "Lamp Stand"
+
+    var id: String { rawValue }
+
+    var category: AssetCategory {
+        switch self {
+        case .subjectBlock, .human:
+            .subject
+        case .propBox, .chair, .table, .sofa:
+            .prop
+        case .lampStand:
+            .lightMarker
+        }
+    }
+
+    var bundleModelName: String? {
+        switch self {
+        case .subjectBlock, .propBox:
+            nil
+        case .human:
+            "Human"
+        case .chair:
+            "Chair"
+        case .table:
+            "Table"
+        case .sofa:
+            "Sofa"
+        case .lampStand:
+            "LampStand"
+        }
+    }
+
+    var defaultScale: Double {
+        switch self {
+        case .subjectBlock, .human:
+            0.75
+        case .propBox:
+            0.75
+        case .chair:
+            0.65
+        case .table:
+            0.8
+        case .sofa:
+            0.7
+        case .lampStand:
+            0.75
+        }
+    }
+
+    var fallbackPrimitive: FallbackPrimitive {
+        switch self {
+        case .subjectBlock, .human:
+            .verticalBox
+        case .propBox, .chair, .table, .sofa:
+            .box
+        case .lampStand:
+            .sphere
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .subjectBlock:
+            "person.crop.rectangle"
+        case .human:
+            "figure.stand"
+        case .propBox:
+            "cube"
+        case .chair:
+            "chair"
+        case .table:
+            "table.furniture"
+        case .sofa:
+            "sofa"
+        case .lampStand:
+            "lightbulb"
+        }
+    }
+
+    static func presets(for tool: SceneTool) -> [AssetPreset] {
+        switch tool {
+        case .subject:
+            [.subjectBlock, .human]
+        case .prop:
+            [.propBox, .chair, .table, .sofa]
+        case .light:
+            [.lampStand]
+        case .frame:
+            []
         }
     }
 }
@@ -138,11 +252,73 @@ enum ShotType: String, CaseIterable, Identifiable, Codable {
         case .lowAngle: "cinematic low angle shot"
         }
     }
+
+    var framingScale: CGFloat {
+        switch self {
+        case .wide: 1.0
+        case .medium: 0.86
+        case .closeUp: 0.66
+        case .lowAngle: 0.9
+        }
+    }
+
+    var framingYOffset: CGFloat {
+        switch self {
+        case .lowAngle: 0.08
+        default: 0
+        }
+    }
+}
+
+enum FrameAspectRatio: String, CaseIterable, Identifiable, Codable {
+    case wide16x9 = "16:9"
+    case cinema239 = "2.39:1"
+    case square1x1 = "1:1"
+    case vertical9x16 = "9:16"
+
+    var id: String { rawValue }
+
+    var ratio: CGFloat {
+        switch self {
+        case .wide16x9: 16.0 / 9.0
+        case .cinema239: 2.39
+        case .square1x1: 1.0
+        case .vertical9x16: 9.0 / 16.0
+        }
+    }
+
+    var promptText: String {
+        switch self {
+        case .wide16x9: "16:9 widescreen frame"
+        case .cinema239: "2.39:1 cinematic anamorphic frame"
+        case .square1x1: "1:1 square frame"
+        case .vertical9x16: "9:16 vertical frame"
+        }
+    }
+}
+
+enum LensPreset: String, CaseIterable, Identifiable, Codable {
+    case wide24 = "24mm"
+    case standard35 = "35mm"
+    case normal50 = "50mm"
+    case portrait85 = "85mm"
+
+    var id: String { rawValue }
+
+    var promptText: String {
+        switch self {
+        case .wide24: "24mm wide lens language"
+        case .standard35: "35mm standard lens language"
+        case .normal50: "50mm natural perspective lens language"
+        case .portrait85: "85mm portrait lens language"
+        }
+    }
 }
 
 struct SceneObjectRecord: Codable, Identifiable {
     var id = UUID()
     var type: SceneTool
+    var assetPreset: AssetPreset?
     var relativeX: Float
     var relativeY: Float
     var relativeZ: Float
@@ -164,6 +340,9 @@ struct CapturedScene: Identifiable {
     let colorTemperature: ColorTemperature
     let lightIntensity: Double
     let lightRadius: Double
+    let frameAspectRatio: FrameAspectRatio
+    let lensPreset: LensPreset
+    let showsCompositionGuides: Bool
     let shouldRenderLightingOverlay: Bool
     let layoutRecords: [SceneObjectRecord]
 }
@@ -180,6 +359,9 @@ final class LookbookEntry {
     var colorTemperature: String
     var lightIntensity: Double = 0.65
     var lightRadius: Double = 0.55
+    var frameAspectRatio: String = FrameAspectRatio.cinema239.rawValue
+    var lensPreset: String = LensPreset.standard35.rawValue
+    var showsCompositionGuides: Bool = true
     var filterName: String
     var layoutJSON: String
 
@@ -194,6 +376,9 @@ final class LookbookEntry {
         colorTemperature: String,
         lightIntensity: Double = 0.65,
         lightRadius: Double = 0.55,
+        frameAspectRatio: String = FrameAspectRatio.cinema239.rawValue,
+        lensPreset: String = LensPreset.standard35.rawValue,
+        showsCompositionGuides: Bool = true,
         filterName: String,
         layoutJSON: String
     ) {
@@ -207,6 +392,9 @@ final class LookbookEntry {
         self.colorTemperature = colorTemperature
         self.lightIntensity = lightIntensity
         self.lightRadius = lightRadius
+        self.frameAspectRatio = frameAspectRatio
+        self.lensPreset = lensPreset
+        self.showsCompositionGuides = showsCompositionGuides
         self.filterName = filterName
         self.layoutJSON = layoutJSON
     }

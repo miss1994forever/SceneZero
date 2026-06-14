@@ -3,6 +3,8 @@ import Foundation
 struct PromptService {
     static func makePrompt(
         shotType: ShotType,
+        frameAspectRatio: FrameAspectRatio,
+        lensPreset: LensPreset,
         lightPreset: LightPreset,
         colorTemperature: ColorTemperature,
         filterPreset: FilterPreset,
@@ -15,6 +17,8 @@ struct PromptService {
 
         return [
             shotType.promptText,
+            frameAspectRatio.promptText,
+            lensPreset.promptText,
             subject,
             lightPreset.promptText,
             colorTemperature.promptText,

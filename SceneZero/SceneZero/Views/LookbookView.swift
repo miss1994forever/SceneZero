@@ -113,6 +113,9 @@ struct LookbookDetailView: View {
 
                 Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
                     metadataRow("Shot", entry.shotType)
+                    metadataRow("Frame", entry.frameAspectRatio)
+                    metadataRow("Lens", entry.lensPreset)
+                    metadataRow("Guides", entry.showsCompositionGuides ? "On" : "Off")
                     metadataRow("Light", entry.lightPreset)
                     metadataRow("Color", entry.colorTemperature)
                     metadataRow("Intensity", "\(Int(entry.lightIntensity * 100))%")
