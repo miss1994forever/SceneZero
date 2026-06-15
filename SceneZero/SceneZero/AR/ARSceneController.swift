@@ -143,6 +143,26 @@ final class ARSceneController: ObservableObject {
         statusText = "Scene cleared"
     }
 
+    func resetSelectedObjectScale() {
+        guard let placedObject = activePlacedObject() else {
+            statusText = "Select an object first"
+            return
+        }
+
+        let presetScale = placedObject.assetPreset?.defaultScale ?? 0.75
+        isUpdatingObjectScaleFromSelection = true
+        objectScale = presetScale
+        isUpdatingObjectScaleFromSelection = false
+
+        let newScale = Float(presetScale)
+        let relativeScale = max(0.01, newScale / placedObject.initialScale)
+        placedObject.entity.scale = SIMD3<Float>(repeating: relativeScale)
+        placedObject.entity.position.y = baseHeightOffset(for: placedObject, scale: newScale)
+        syncRecord(for: placedObject)
+
+        statusText = "\(placedObject.tool.rawValue) reset"
+    }
+
     func assetPreset(for tool: SceneTool) -> AssetPreset {
         switch tool {
         case .subject:

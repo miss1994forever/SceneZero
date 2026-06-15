@@ -19,31 +19,59 @@ struct LookbookView: View {
                         description: Text("Capture an AR setup to create your first visual prompt.")
                     )
                 } else {
-                    List {
-                        ForEach(entries) { entry in
-                            NavigationLink {
-                                LookbookDetailView(entry: entry)
-                            } label: {
-                                HStack(spacing: 12) {
-                                    thumbnail(for: entry)
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(entry.title)
-                                            .font(.headline)
-                                            .lineLimit(1)
-                                        Text(entry.prompt)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(2)
-                                    }
-                                }
-                                .padding(.vertical, 4)
-                            }
-                        }
-                        .onDelete(perform: delete)
-                    }
+	                    ScrollView {
+	                        LazyVStack(spacing: 12) {
+	                            ForEach(entries) { entry in
+	                                NavigationLink {
+	                                    LookbookDetailView(entry: entry)
+	                                } label: {
+	                                    HStack(spacing: 12) {
+	                                        thumbnail(for: entry)
+	                                        VStack(alignment: .leading, spacing: 4) {
+	                                            Text(entry.title)
+	                                                .font(.headline)
+	                                                .lineLimit(1)
+	                                            Text(entry.prompt)
+	                                                .font(.caption)
+	                                                .foregroundStyle(.secondary)
+	                                                .lineLimit(2)
+	                                        }
+	                                        Spacer()
+	                                        Image(systemName: "chevron.right")
+	                                            .font(.caption.weight(.bold))
+	                                            .foregroundStyle(.secondary)
+	                                    }
+	                                    .padding(12)
+	                                    .liquidGlassRounded(cornerRadius: 18)
+	                                }
+	                                .buttonStyle(.plain)
+	                                .contextMenu {
+	                                    Button(role: .destructive) {
+	                                        delete(entry)
+	                                    } label: {
+	                                        Label("Delete", systemImage: "trash")
+	                                    }
+	                                }
+	                            }
+	                        }
+	                    }
+                    .padding()
+                    .scrollContentBackground(.hidden)
                 }
             }
             .navigationTitle("Lookbook")
+            .background(
+                LinearGradient(
+                    colors: [
+                        Color.blue.opacity(0.10),
+                        Color.purple.opacity(0.08),
+                        Color.clear
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+            )
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
@@ -75,9 +103,13 @@ struct LookbookView: View {
     private func delete(at offsets: IndexSet) {
         for index in offsets {
             let entry = entries[index]
-            imageStorage.delete(relativePath: entry.imagePath)
-            modelContext.delete(entry)
+            delete(entry)
         }
+    }
+
+    private func delete(_ entry: LookbookEntry) {
+        imageStorage.delete(relativePath: entry.imagePath)
+        modelContext.delete(entry)
         try? modelContext.save()
     }
 }
@@ -107,9 +139,15 @@ struct LookbookDetailView: View {
                         UIPasteboard.general.string = entry.prompt
                     } label: {
                         Label("Copy Prompt", systemImage: "doc.on.doc")
+                            .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 11)
+                    .liquidGlassCapsule()
                 }
+                .padding(14)
+                .liquidGlassRounded(cornerRadius: 20)
 
                 Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
                     metadataRow("Shot", entry.shotType)
@@ -123,9 +161,23 @@ struct LookbookDetailView: View {
                     metadataRow("Look", entry.filterName)
                 }
                 .font(.subheadline)
+                .padding(14)
+                .liquidGlassRounded(cornerRadius: 20)
             }
             .padding()
         }
+        .background(
+            LinearGradient(
+                colors: [
+                    Color.blue.opacity(0.10),
+                    Color.purple.opacity(0.08),
+                    Color.clear
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+        )
         .navigationTitle(entry.title)
         .navigationBarTitleDisplayMode(.inline)
     }

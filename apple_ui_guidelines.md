@@ -254,6 +254,32 @@ Use Apple-like restraint.
 - Use tint only for selected states and primary actions.
 - Keep AR overlays subtle enough that the real scene is still readable.
 
+## 11.1 Liquid Glass Direction
+
+SceneZero can use a Liquid Glass-inspired visual style, but it should not be treated as a fully native Liquid Glass implementation until the project is built with the newer Apple SDKs that expose Apple's official glass APIs.
+
+Official Apple references to check before implementation:
+
+- Apple Developer technology overview: `https://developer.apple.com/documentation/technologyoverviews/liquid-glass`
+- SwiftUI `glassEffect` API: `https://developer.apple.com/documentation/swiftui/view/glasseffect(_:in:isenabled:)`
+- SwiftUI `GlassEffectContainer`: `https://developer.apple.com/documentation/swiftui/glasseffectcontainer`
+- WWDC video: `https://developer.apple.com/videos/play/wwdc2025/323/`
+
+Current project rule:
+
+- If building with the current iOS 18.x simulator / SDK, use the local compatibility style in `LiquidGlassStyle.swift`.
+- Do not stack excessive shadows, strokes, and large Material backgrounds just to imitate glass.
+- Keep glass controls compact and adaptive to iPhone widths.
+- Prefer native SwiftUI controls and Material over custom overdraw.
+- Make readability and safe-area fit more important than the glass effect itself.
+
+Future SDK rule:
+
+- When the project moves to Xcode 26 / iOS 26 SDK or newer, migrate compatible overlays to native `glassEffect`.
+- Group related controls with `GlassEffectContainer` where appropriate.
+- Prefer system toolbars, tab bars, sheets, and controls that automatically adopt native Liquid Glass.
+- Keep custom compatibility styles only as fallbacks for older OS targets.
+
 ## 12. Interaction Rules
 
 AR interaction should feel direct.

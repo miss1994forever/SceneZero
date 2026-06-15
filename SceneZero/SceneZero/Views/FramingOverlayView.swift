@@ -33,7 +33,7 @@ struct FramingOverlayView: View {
                             .foregroundStyle(.white.opacity(0.82))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 5)
-                            .background(.black.opacity(0.35), in: Capsule())
+                            .liquidGlassCapsule(shadowOpacity: 0.12)
                             .padding(.trailing, 16)
                             .padding(.bottom, max(20, proxy.safeAreaInsets.bottom + 8))
                     }

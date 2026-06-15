@@ -15,7 +15,7 @@
 - 控制面板采用固定高度加内部滚动，不再使用 `More / Less` 二级展开；完全收起后的入口放在右下角浮动按钮，并避开 safe area。
 - Capture 和 Lookbook 不属于参数调节工具，应从工具面板中分离。Capture 作为独立高频主操作按钮常驻在 AR 画面上，Lookbook 作为独立页面入口放在轻量导航位置。
 - 产品结构按多界面设计推进：Capture 负责 AR 采集，Studio 负责 Lookbook / 灵感夹 / 项目管理，Explore 作为未来电影参考图浏览与搜索界面。
-- AR 物体交互应从“面板参数调节”升级为“直接操控”：支持 tap 选中、拖拽移动、双指缩放和双指旋转；面板滑杆保留为精细调整。
+- AR 物体交互应从“面板参数调节”升级为“直接操控”：支持 tap 选中、拖拽移动、双指缩放和双指旋转；Size 滑杆不再作为主界面常驻控件，最多作为后续高级精细调整。
 
 ## 二、灯光效果技术方案
 
@@ -169,6 +169,47 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
    - 当前选中工具的名称在参数标题处显示，工具栏本身可减少文字。
    - 参数面板减少重复 label 和大面积背景，优先使用系统间距、细分隔线和轻量 selected state。
 
+8. **Apple Camera-style 底部控制区**
+   - AR 主界面底部采用类似 Apple Camera 的操作结构。
+   - `Capture` 使用白色圆形 shutter，固定在底部视觉中心，是最高优先级操作。
+   - `Subject / Prop / Frame / Light` 是左侧模式选择，不再表现为大面板中的工具卡片。
+   - 模式选择使用横向滑动 picker：选择位固定，模式图标从选择位下方经过，松手后只保留当前模式。
+   - 右侧显示“当前模式的调节按钮”，按钮数量控制在 2-4 个，优先使用 SF Symbols。
+   - 点击调节按钮后，只弹出轻量浮层：横向 chip picker、短滑杆或 toggle，不打开大面积参数面板。
+   - 主界面尽量避免长期显示大面板；大面板只作为备用或高级设置入口。
+
+9. **模式与调节按钮分工**
+   - `Subject` 模式：
+     - `Asset`：选择 Block / Human。
+     - `Reset`：重置当前选中 Subject 的 transform 或 scale。
+     - 不常驻 `Size`：缩放主要通过双指捏合完成。
+   - `Prop` 模式：
+     - `Asset`：选择 Box / Chair / Table / Sofa。
+     - `Reset`：重置当前选中 Prop 的 transform 或 scale。
+     - 可选后续扩展 `Duplicate`，用于快速布置多个类似道具。
+     - 不常驻 `Size`：缩放主要通过双指捏合完成。
+   - `Frame` 模式：
+     - `Frame`：选择 2.39:1 / 16:9 / 4:3 / 1:1 / 9:16 等画幅。
+     - `Lens`：选择 24mm / 35mm / 50mm / 85mm 等镜头语言。
+     - `Shot`：选择 Wide Shot / Medium Shot / Close-Up / Low Angle 等构图语义。
+     - `Guides`：开关三分线、安全框、中心线。
+   - `Light` 模式：
+     - `Direction`：选择 Key Left / Rim Right / Front Soft / Top / Low Side。
+     - `Color`：选择 3200K / 4500K / 5600K / 7000K。
+     - `Intensity`：短滑杆，影响 RealityKit light 和 overlay opacity。
+     - `Spread`：短滑杆，影响 overlay 半径和 spot light angle。
+   - 全局设置：
+     - `Look` 不归属 Subject / Prop / Frame / Light，作为 Capture 风格设置独立放置，例如快门附近的小滤镜按钮或顶部轻量按钮。
+     - `Lookbook` 作为 Studio / 历史结果入口，不进入模式调节按钮。
+     - `Reset Scene` 属于全局场景操作，应放在次级菜单或顶部轻量按钮中，避免误触。
+
+10. **调节按钮展开交互**
+    - `Asset / Frame / Lens / Shot / Direction / Color`：点击后在快门上方出现横向 chip picker，选择后自动收起或短暂保留。
+    - `Intensity / Spread`：点击后出现短滑杆，滑杆靠近按钮展开，松手或点击画面空白处收起。
+    - `Guides`：点击直接 toggle，不进入二级菜单。
+    - `Reset`：点击后可直接执行；如果重置整个 transform，建议先弹出轻量确认或只重置 scale，降低误操作风险。
+    - 所有浮层应避开 Home Indicator、快门按钮和画幅 overlay 底部标签。
+
 ### 建议实现步骤
 
 1. 调整 `MainView`：
@@ -186,19 +227,19 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
    - 横屏面板高度控制在约 200-240pt。
    - 竖屏面板高度控制在约 260-320pt。
 
-3. 压缩工具选择区域：
-   - 保留 Subject / Prop / Frame / Light 四个工具。
-   - 将大卡片按钮改为紧凑图标工具栏或 segmented toolbar。
-   - 工具按钮高度控制在 44-48pt。
-   - 默认只显示 SF Symbols，当前选中工具的文字在参数标题处显示。
-   - VoiceOver accessibility label 保留完整工具名称。
+3. 重构底部 Camera Controls：
+   - 保留 Subject / Prop / Frame / Light 四个模式。
+   - 将模式选择放在 Capture 左侧，使用横向滑动 picker。
+   - 将当前模式调节按钮放在 Capture 右侧。
+   - 默认只显示当前模式图标和必要调节图标，减少文字。
+   - VoiceOver accessibility label 保留完整模式与调节项名称。
 
 4. 分离 Capture：
    - 在 `MainView` 中新增独立 Capture 浮动按钮。
    - 面板显示和隐藏时 Capture 都保持可用。
-   - Capture 按钮使用 `.borderedProminent` 或圆形/胶囊形主按钮样式。
+   - Capture 按钮使用白色圆形 shutter 样式，位于底部中心。
    - Capture 执行时显示 `isCapturing` 状态，并禁用重复点击。
-   - Capture 位置需要避开右下角工具入口、Home Indicator 和画幅 overlay 底部标签。
+   - Capture 位置需要避开 Home Indicator 和画幅 overlay 底部标签。
 
 5. 分离 Lookbook：
    - 从 `ControlPanelView` 移除 Lookbook 按钮。
@@ -214,7 +255,7 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
 7. 真机验证：
    - 竖屏 Light 设置滚动是否顺畅。
    - 横屏 Frame 设置是否没有文字重叠。
-   - 右下角按钮是否容易点击，且不挡主体构图。
+   - 底部快门、模式选择和调节按钮是否避开 Home Indicator。
    - Capture 在面板收起后是否仍能稳定触发。
    - Lookbook 入口是否清楚但不抢主视觉。
    - 上滑唤出是否与系统 Home Indicator 手势冲突。
@@ -325,12 +366,34 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
 
 1. 创建 `AssetPreset` 模型。
 2. 在工具面板中为 Subject / Prop 增加模型 preset 选择。
-3. 把 `.usdz` 放入 app bundle。
-4. 放置时优先加载 `ModelEntity.loadModel(named:)`。
-5. 加载失败时使用当前 primitive。
-6. 为所有模型生成 collision shapes。
-7. 统一模型默认尺寸和地面高度。
-8. 保存 Lookbook 时记录 asset preset。
+3. 新建资源目录：
+   - 推荐目录：`SceneZero/SceneZero/Assets3D/`。
+   - 文件命名与 `AssetPreset.bundleModelName` 保持一致，例如 `Human.usdz`、`Chair.usdz`、`Table.usdz`、`Sofa.usdz`。
+   - 第一轮只加入 2-3 个模型，优先 `Human`、`Chair`、`Table` 或 `Sofa`。
+4. 控制资产范围：
+   - 优先选择低面数、白模、静态模型。
+   - 单个 `.usdz` 尽量控制在 1-5 MB。
+   - 不加入复杂动画、骨骼角色、高清贴图包或高面数家具。
+   - 只使用自己制作、课程允许或明确可商用/可教学使用的模型。
+5. 加入 bundle：
+   - 将 `.usdz` 加入 Xcode target 的 Copy Bundle Resources。
+   - 构建后确认 app bundle 中能找到模型文件。
+6. 加载策略：
+   - 放置时优先通过 `ModelEntity.loadModel(named:)` 或 async 等价 API 加载 bundle 模型。
+   - 加载成功后统一设置默认 scale、地面高度和材质必要调整。
+   - 加载失败、文件缺失或碰撞体生成失败时，回退到当前 primitive / 几何组合模型。
+7. 碰撞与手势：
+   - 为加载后的模型调用 `generateCollisionShapes(recursive: true)`。
+   - 确认真机上 tap 选中、拖拽、双指缩放和旋转仍然可用。
+   - 如果模型原点不在底部，需要用 `AssetPreset` 的地面高度 offset 修正。
+8. 元数据保存：
+   - 保存 Lookbook 时继续记录 `assetPreset`，不保存 `.usdz` 二进制。
+   - 相对布光方案重载时，根据 `assetPreset` 再次加载对应 bundle 模型。
+9. 不做的内容：
+   - 不做在线素材库。
+   - 不做运行时下载模型。
+   - 不做账号、云同步或素材版权管理系统。
+   - 不在第一版支持任意复杂模型编辑。
 
 ### 验收标准
 
@@ -339,6 +402,8 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
 - 模型加载失败不会导致 App 崩溃。
 - 内置模型可以被 Capture 保存到截图中。
 - Lookbook 元数据能记录所用资产类型。
+- 删除或重命名 `.usdz` 后，App 仍能使用 primitive fallback 完成演示。
+- 真机上加载 `.usdz` 后，交互手势与截图保存仍然稳定。
 
 ## 四点八、AR 物体直接操控方案
 
@@ -353,7 +418,7 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
 - 单指拖拽：移动选中物体。
 - 双指捏合：缩放选中物体。
 - 双指旋转：调整 yaw。
-- 面板 slider：保留为精细缩放。
+- Size slider 不进入主界面常驻调节；缩放以双指捏合为主，必要时后续放入高级设置。
 - Light 的方向仍由 preset 控制，避免自由 3D 旋转过复杂。
 
 ### RealityKit 技术方案
@@ -379,7 +444,8 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
 3. 安装 translation / rotation / scale gestures。
 4. 手势结束后更新 records 中的位置、yaw 和 scale。
 5. UI 面板显示当前选中物体类型和 scale。
-6. 保留 reset scene 能清除所有手势对象。
+6. 底部调节按钮提供 Reset，必要时重置当前选中物体的 scale 或 transform。
+7. 保留 reset scene 能清除所有手势对象。
 
 ### 验收标准
 
@@ -421,7 +487,8 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
    - 双指缩放。
    - 双指旋转 yaw。
    - 删除物体。
-   - 面板滑杆保留为精确缩放。
+   - Subject / Prop 主界面不保留 Size 滑杆，缩放通过双指捏合完成。
+   - Subject / Prop 的底部调节按钮保留 Asset 和 Reset。
 6. 添加阴影接收平面：
    - 在检测到的水平面上放置低可见度平面。
    - 用于增强虚拟物体落地感。
@@ -592,13 +659,14 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
 
 1. 优化界面：
    - AR 主视图。
-   - 轻量参数控制面板。
-   - 固定高度滚动面板。
-   - 右下角浮动收起入口。
-   - 独立 Capture 主按钮。
+   - Apple Camera-style 底部控制区。
+   - 底部中心白色圆形 Capture 主按钮。
+   - 左侧横向模式选择：Subject / Prop / Frame / Light。
+   - 右侧当前模式调节按钮。
+   - 轻量参数浮层：chip picker、短滑杆、toggle。
+   - 固定高度滚动面板仅作为备用或高级设置入口。
    - 独立 Lookbook 页面入口。
    - Studio / 灵感夹入口。
-   - 紧凑图标工具栏。
    - 横屏默认沉浸式取景。
    - 风格选择。
    - Capture 状态反馈。
@@ -612,12 +680,13 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
 3. 准备演示流程：
    - 打开 App。
    - 扫描平面。
+   - 通过底部模式选择切到 Subject / Prop。
+   - 通过右侧 Asset 调节按钮切换人物或道具模型 preset。
    - 放置人物和道具。
-   - 切换人物或道具模型 preset。
    - 拖拽、缩放、旋转道具。
-   - 选择 Frame / Lens 设置，例如 2.39:1 + 35mm + Close-Up。
-   - 添加灯光预设。
-   - 调节灯光强度和色温。
+   - 切到 Frame，通过 Frame / Lens / Shot / Guides 调节按钮选择 2.39:1 + 35mm + Close-Up。
+   - 切到 Light，添加灯光预设。
+   - 通过 Direction / Color / Intensity / Spread 调节按钮控制灯光。
    - 展示现实画面上的光斑/光束 overlay。
    - Capture。
    - 合成光效并应用滤镜。
@@ -660,9 +729,12 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
 17. Prompt 模板拼接。
 18. 相对布光方案保存与重载。
 19. 分离 Capture 和 Lookbook：Capture 独立常驻，Lookbook 独立页面入口。
-20. Apple 风格 UI polish：紧凑图标工具栏、固定高度滚动面板、右下角浮动入口、横竖屏 safe area 验证。
-21. Explore 静态 mock 或未来扩展说明。
-22. 演示准备。
+20. Apple Camera-style 底部控制区：底部中心 shutter、左侧模式选择、右侧当前模式调节按钮。
+21. 将 Subject / Prop 的 Size 滑杆从主界面移除，保留手势缩放和 Reset。
+22. 将 Shot 合并进 Frame 调节组，将 Look 作为全局 Capture 风格按钮。
+23. Apple 风格 UI polish：轻量浮层、固定选择位、横竖屏 safe area 验证。
+24. Explore 静态 mock 或未来扩展说明。
+25. 演示准备。
 
 ## 十、每日开发日志建议
 

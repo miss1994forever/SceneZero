@@ -20,7 +20,7 @@ struct ControlPanelView: View {
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 14)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .liquidGlassRounded(cornerRadius: 20, material: .regularMaterial)
         .padding(.horizontal, 14)
         .padding(.bottom, 12)
         .clipped()
@@ -38,14 +38,11 @@ struct ControlPanelView: View {
             Button {
                 onHide()
             } label: {
-                Capsule()
-                    .fill(Color.secondary.opacity(0.16))
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.primary)
                     .frame(width: 34, height: 28)
-                    .overlay {
-                        Image(systemName: "chevron.down")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.secondary)
-                    }
+                    .liquidGlassCapsule(shadowOpacity: 0.08)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Hide controls")
