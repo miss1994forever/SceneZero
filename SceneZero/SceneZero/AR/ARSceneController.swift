@@ -62,7 +62,7 @@ final class ARSceneController: ObservableObject {
         }
 
         guard selectedTool != .frame else {
-            statusText = "\(frameAspectRatio.rawValue) frame guide active"
+            statusText = "\(frameAspectRatio.rawValue) frame active"
             return
         }
 
@@ -104,8 +104,7 @@ final class ARSceneController: ObservableObject {
                     shotType: self.shotType,
                     frameAspectRatio: self.frameAspectRatio,
                     lensPreset: self.lensPreset,
-                    lightPreset: self.lightPreset,
-                    colorTemperature: self.colorTemperature,
+                    lightRecords: PromptService.lightRecords(from: self.records),
                     filterPreset: self.filterPreset,
                     hasSubject: self.hasSubjectAnchor,
                     locationDescription: self.locationDescription

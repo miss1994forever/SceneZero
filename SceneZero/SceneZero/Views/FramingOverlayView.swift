@@ -5,6 +5,7 @@ struct FramingOverlayView: View {
     let shotType: ShotType
     let lensPreset: LensPreset
     let showsGuides: Bool
+    let contentInsets: FramingSafeInsets
 
     var body: some View {
         GeometryReader { proxy in
@@ -34,7 +35,7 @@ struct FramingOverlayView: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 5)
                             .liquidGlassCapsule(shadowOpacity: 0.12)
-                            .padding(.trailing, 16)
+                            .padding(.trailing, max(16, contentInsets.trailing + 12))
                             .padding(.bottom, max(20, proxy.safeAreaInsets.bottom + 8))
                     }
                 }
@@ -46,7 +47,8 @@ struct FramingOverlayView: View {
         FramingGeometry.frameRect(
             in: CGRect(origin: .zero, size: size),
             aspectRatio: aspectRatio,
-            shotType: shotType
+            shotType: shotType,
+            contentInsets: contentInsets
         )
     }
 
@@ -89,7 +91,8 @@ struct FramingOverlayView: View {
         aspectRatio: .cinema239,
         shotType: .closeUp,
         lensPreset: .standard35,
-        showsGuides: true
+        showsGuides: true,
+        contentInsets: .zero
     )
     .background(Color.gray)
 }

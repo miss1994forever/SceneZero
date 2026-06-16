@@ -150,14 +150,19 @@ struct LookbookDetailView: View {
                 .liquidGlassRounded(cornerRadius: 20)
 
                 Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
+                    let lightRecords = lightRecords(for: entry)
                     metadataRow("Shot", entry.shotType)
                     metadataRow("Frame", entry.frameAspectRatio)
                     metadataRow("Lens", entry.lensPreset)
                     metadataRow("Guides", entry.showsCompositionGuides ? "On" : "Off")
                     metadataRow("Light", entry.lightPreset)
-                    metadataRow("Color", entry.colorTemperature)
-                    metadataRow("Intensity", "\(Int(entry.lightIntensity * 100))%")
-                    metadataRow("Spread", "\(Int(entry.lightRadius * 100))%")
+                    if lightRecords.count == 1, let light = lightRecords.first {
+                        metadataRow("Color", light.colorTemperature?.rawValue ?? entry.colorTemperature)
+                        metadataRow("Intensity", "\(Int((light.lightIntensity ?? entry.lightIntensity) * 100))%")
+                        metadataRow("Spread", "\(Int((light.lightRadius ?? entry.lightRadius) * 100))%")
+                    } else if lightRecords.count > 1 {
+                        metadataRow("Light Detail", "\(lightRecords.count) saved in layout")
+                    }
                     metadataRow("Look", entry.filterName)
                 }
                 .font(.subheadline)
@@ -188,6 +193,14 @@ struct LookbookDetailView: View {
                 .foregroundStyle(.secondary)
             Text(value)
         }
+    }
+
+    private func lightRecords(for entry: LookbookEntry) -> [SceneObjectRecord] {
+        guard let data = entry.layoutJSON.data(using: .utf8),
+              let records = try? JSONDecoder().decode([SceneObjectRecord].self, from: data) else {
+            return []
+        }
+        return PromptService.lightRecords(from: records)
     }
 }
 

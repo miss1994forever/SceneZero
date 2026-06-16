@@ -6,7 +6,6 @@ struct MainView: View {
     @StateObject private var controller = ARSceneController()
     @State private var showsLookbook = false
     @State private var alertMessage: String?
-    @State private var isControlPanelVisible = false
     @State private var activeAdjustment: CaptureAdjustment?
 
     private let filterService = FilterService()
@@ -17,6 +16,11 @@ struct MainView: View {
     var body: some View {
         GeometryReader { proxy in
             let isLandscape = proxy.size.width > proxy.size.height
+            let framingInsets = framingContentInsets(
+                size: proxy.size,
+                safeAreaInsets: proxy.safeAreaInsets,
+                isLandscape: isLandscape
+            )
 
             ZStack {
                 ARViewContainer(controller: controller)
@@ -36,7 +40,8 @@ struct MainView: View {
                     aspectRatio: controller.frameAspectRatio,
                     shotType: controller.shotType,
                     lensPreset: controller.lensPreset,
-                    showsGuides: controller.showsCompositionGuides
+                    showsGuides: controller.showsCompositionGuides,
+                    contentInsets: framingInsets
                 )
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
@@ -47,12 +52,8 @@ struct MainView: View {
                     isLandscape: isLandscape
                 )
             }
-            .onAppear {
-                isControlPanelVisible = false
-            }
             .onChange(of: isLandscape) { _, newValue in
                 withAnimation(.snappy(duration: 0.24)) {
-                    isControlPanelVisible = false
                     activeAdjustment = nil
                 }
             }
@@ -82,15 +83,6 @@ struct MainView: View {
             VStack(spacing: 0) {
                 topBar(isCompact: size.width < 430)
                 Spacer()
-                if isControlPanelVisible {
-                    ControlPanelView(
-                        controller: controller,
-                        onHide: hideControls
-                    )
-                    .frame(maxWidth: isLandscape ? 460 : .infinity)
-                    .frame(height: controlPanelHeight(isLandscape: isLandscape))
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
             }
 
             cameraControls(
@@ -100,11 +92,6 @@ struct MainView: View {
             )
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
         }
-        .animation(.snappy(duration: 0.24), value: isControlPanelVisible)
-    }
-
-    private func controlPanelHeight(isLandscape: Bool) -> CGFloat {
-        isLandscape ? 164 : 238
     }
 
     private func cameraControls(
@@ -146,7 +133,16 @@ struct MainView: View {
             ShutterButton(
                 isCapturing: controller.isCapturing,
                 size: shutterSize,
-                action: captureAndSave
+                action: {
+                    captureAndSave(
+                        viewportSize: availableSize,
+                        framingInsets: framingContentInsets(
+                            size: availableSize,
+                            safeAreaInsets: safeAreaInsets,
+                            isLandscape: isLandscape
+                        )
+                    )
+                }
             )
             .padding(.trailing, controlTrailingPadding)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
@@ -178,6 +174,25 @@ struct MainView: View {
         let maxHeight = availableSize.height * (isLandscape ? 0.32 : 0.30)
         let minimumHeight: CGFloat = isLandscape ? 132 : 178
         return max(minimumHeight, min(240, maxHeight))
+    }
+
+    private func framingContentInsets(
+        size: CGSize,
+        safeAreaInsets: EdgeInsets,
+        isLandscape: Bool
+    ) -> FramingSafeInsets {
+        let trailingPadding = max(isLandscape ? 18 : 12, safeAreaInsets.trailing + 8)
+        let shutterSize: CGFloat = isCompactWidth(size.width) ? 62 : 68
+        let trailingReserve = trailingPadding + shutterSize + (isLandscape ? 32 : 26)
+        let topReserve = max(safeAreaInsets.top + (isLandscape ? 54 : 64), isLandscape ? 58 : 76)
+        let bottomReserve = max(safeAreaInsets.bottom + 12, isLandscape ? 14 : 24)
+
+        return FramingSafeInsets(
+            top: topReserve,
+            leading: 12,
+            bottom: bottomReserve,
+            trailing: trailingReserve
+        )
     }
 
     private func adjustmentButtonColumnHeight(for tool: SceneTool) -> CGFloat {
@@ -235,15 +250,17 @@ struct MainView: View {
             .accessibilityLabel("Reset scene")
 
             Button {
-                showControls()
+                withAnimation(.snappy(duration: 0.2)) {
+                    controller.showsCompositionGuides.toggle()
+                }
             } label: {
-                Image(systemName: "slider.horizontal.3")
+                Image(systemName: controller.showsCompositionGuides ? "grid.circle.fill" : "grid.circle")
                     .font(.system(size: isCompact ? 13 : 14, weight: .semibold))
                     .frame(width: isCompact ? 30 : 32, height: isCompact ? 30 : 32)
-                    .liquidGlassCircle()
+                    .liquidGlassCircle(isSelected: controller.showsCompositionGuides)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Advanced controls")
+            .accessibilityLabel("Composition guides")
         }
         .padding(.horizontal, isCompact ? 12 : 16)
         .padding(.vertical, isCompact ? 8 : 10)
@@ -252,25 +269,15 @@ struct MainView: View {
         .padding(.top, 12)
     }
 
-    private func showControls() {
-        withAnimation(.snappy(duration: 0.24)) {
-            isControlPanelVisible = true
-        }
-    }
-
-    private func hideControls() {
-        withAnimation(.snappy(duration: 0.24)) {
-            isControlPanelVisible = false
-        }
-    }
-
     private func dismissAdjustment() {
         withAnimation(.snappy(duration: 0.2)) {
             activeAdjustment = nil
         }
     }
 
-    private func captureAndSave() {
+    private func captureAndSave(viewportSize: CGSize, framingInsets: FramingSafeInsets) {
+        dismissAdjustment()
+
         controller.capture { result in
             switch result {
             case .success(let captured):
@@ -279,7 +286,10 @@ struct MainView: View {
                     aspectRatio: captured.frameAspectRatio,
                     shotType: captured.shotType,
                     lensPreset: captured.lensPreset,
-                    showsGuides: captured.showsCompositionGuides
+                    showsGuides: false,
+                    viewportSize: viewportSize,
+                    contentInsets: framingInsets,
+                    cropsToFrame: true
                 )
                 let litImage = lightingOverlayService.applyOverlay(
                     to: framedImage,
@@ -294,13 +304,14 @@ struct MainView: View {
                     let imagePath = try imageStorage.save(filteredImage)
                     let layoutData = try JSONEncoder().encode(captured.layoutRecords)
                     let layoutJSON = String(data: layoutData, encoding: .utf8) ?? "[]"
+                    let lightSummary = PromptService.lightSummary(for: captured.layoutRecords)
                     let entry = LookbookEntry(
                         title: "Scene \(Date().formatted(date: .numeric, time: .shortened))",
                         imagePath: imagePath,
                         prompt: captured.prompt,
                         shotType: captured.shotType.rawValue,
-                        lightPreset: captured.lightPreset.rawValue,
-                        colorTemperature: captured.colorTemperature.rawValue,
+                        lightPreset: lightSummary,
+                        colorTemperature: captured.shouldRenderLightingOverlay ? captured.colorTemperature.rawValue : "None",
                         lightIntensity: captured.lightIntensity,
                         lightRadius: captured.lightRadius,
                         frameAspectRatio: captured.frameAspectRatio.rawValue,
@@ -370,11 +381,11 @@ private enum CaptureAdjustment: String, Identifiable, Equatable {
     case frame = "Frame"
     case lens = "Lens"
     case shot = "Shot"
-    case guides = "Guides"
     case direction = "Direction"
     case color = "Color"
     case intensity = "Intensity"
     case spread = "Spread"
+    case filter = "Filter"
 
     var id: String { rawValue }
 
@@ -385,11 +396,11 @@ private enum CaptureAdjustment: String, Identifiable, Equatable {
         case .frame: "rectangle.on.rectangle"
         case .lens: "camera.aperture"
         case .shot: "viewfinder"
-        case .guides: "grid"
         case .direction: "light.beacon.max"
         case .color: "thermometer.sun"
         case .intensity: "sun.max"
         case .spread: "circle.dotted"
+        case .filter: "camera.filters"
         }
     }
 
@@ -398,7 +409,7 @@ private enum CaptureAdjustment: String, Identifiable, Equatable {
         case .subject, .prop:
             [.asset, .reset]
         case .frame:
-            [.frame, .lens, .shot, .guides]
+            [.frame, .lens, .shot, .filter]
         case .light:
             [.direction, .color, .intensity, .spread]
         }
@@ -451,9 +462,6 @@ private struct AdjustmentButtonColumn: View {
         case .reset:
             onReset()
             activeAdjustment = nil
-        case .guides:
-            controller.showsCompositionGuides.toggle()
-            activeAdjustment = nil
         default:
             activeAdjustment = activeAdjustment == adjustment ? nil : adjustment
         }
@@ -491,6 +499,8 @@ private struct InlineAdjustmentBar: View {
             optionChips(LensPreset.allCases, selection: $controller.lensPreset)
         case .shot:
             optionChips(ShotType.allCases, selection: $controller.shotType)
+        case .filter:
+            optionChips(FilterPreset.allCases, selection: $controller.filterPreset)
         case .direction:
             optionChips(LightPreset.allCases, selection: $controller.lightPreset)
         case .color:
@@ -499,7 +509,7 @@ private struct InlineAdjustmentBar: View {
             sliderControl(value: $controller.lightIntensity, range: 0.1...1.0)
         case .spread:
             sliderControl(value: $controller.lightRadius, range: 0.2...1.0)
-        case .reset, .guides:
+        case .reset:
             EmptyView()
         }
     }
