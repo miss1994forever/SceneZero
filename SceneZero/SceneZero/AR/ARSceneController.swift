@@ -255,6 +255,12 @@ final class ARSceneController: ObservableObject {
     }
 
     private func makeEntity(for tool: SceneTool, assetPreset: AssetPreset?, scale: Float) -> ModelEntity? {
+        if let assetPreset,
+           let bundledEntity = makeBundledAssetEntity(for: assetPreset, scale: scale) {
+            statusText = "\(assetPreset.rawValue) USDZ loaded"
+            return bundledEntity
+        }
+
         switch tool {
         case .subject:
             if assetPreset == .human {
@@ -280,6 +286,68 @@ final class ARSceneController: ObservableObject {
             let entity = ModelEntity(mesh: mesh, materials: [material])
             entity.position.y = 1.35 * scale
             return entity
+        }
+    }
+
+    private func makeBundledAssetEntity(for assetPreset: AssetPreset, scale: Float) -> ModelEntity? {
+        guard let modelURL = bundledModelURL(for: assetPreset) else {
+            return nil
+        }
+
+        do {
+            let model = try Entity.load(contentsOf: modelURL)
+            let proxy = collisionProxyEntity(for: assetPreset, scale: scale)
+            model.scale = SIMD3<Float>(repeating: scale)
+            alignBundledModelToGround(model, assetPreset: assetPreset, scale: scale)
+            proxy.addChild(model)
+            proxy.position.y = baseHeightOffset(for: assetPreset, scale: scale)
+            return proxy
+        } catch {
+            return nil
+        }
+    }
+
+    private func bundledModelURL(for assetPreset: AssetPreset) -> URL? {
+        guard let modelName = assetPreset.bundleModelName else {
+            return nil
+        }
+
+        if let url = Bundle.main.url(forResource: modelName, withExtension: "usdz", subdirectory: "Assets3D") {
+            return url
+        }
+
+        return Bundle.main.url(forResource: modelName, withExtension: "usdz")
+    }
+
+    private func alignBundledModelToGround(_ model: Entity, assetPreset: AssetPreset, scale: Float) {
+        let bounds = model.visualBounds(relativeTo: model)
+        let localGroundY = -baseHeightOffset(for: assetPreset, scale: scale)
+        model.position.y = localGroundY - bounds.min.y * scale
+    }
+
+    private func collisionProxyEntity(for assetPreset: AssetPreset, scale: Float) -> ModelEntity {
+        let size = proxySize(for: assetPreset, scale: scale)
+        let mesh = MeshResource.generateBox(width: size.x, height: size.y, depth: size.z)
+        let material = SimpleMaterial(color: UIColor.white.withAlphaComponent(0.001), isMetallic: false)
+        return ModelEntity(mesh: mesh, materials: [material])
+    }
+
+    private func proxySize(for assetPreset: AssetPreset, scale: Float) -> SIMD3<Float> {
+        switch assetPreset {
+        case .subjectBlock:
+            SIMD3<Float>(0.28 * scale, 1.65 * scale, 0.28 * scale)
+        case .human:
+            SIMD3<Float>(0.58 * scale, 1.75 * scale, 0.28 * scale)
+        case .propBox:
+            SIMD3<Float>(0.45 * scale, 0.35 * scale, 0.45 * scale)
+        case .chair:
+            SIMD3<Float>(0.50 * scale, 0.90 * scale, 0.50 * scale)
+        case .table:
+            SIMD3<Float>(0.88 * scale, 0.76 * scale, 0.58 * scale)
+        case .sofa:
+            SIMD3<Float>(1.15 * scale, 0.75 * scale, 0.55 * scale)
+        case .lampStand:
+            SIMD3<Float>(0.24 * scale, 1.45 * scale, 0.24 * scale)
         }
     }
 

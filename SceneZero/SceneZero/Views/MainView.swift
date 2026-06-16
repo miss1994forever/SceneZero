@@ -78,7 +78,7 @@ struct MainView: View {
         safeAreaInsets: EdgeInsets,
         isLandscape: Bool
     ) -> some View {
-        ZStack(alignment: .bottomTrailing) {
+        ZStack(alignment: .trailing) {
             VStack(spacing: 0) {
                 topBar(isCompact: size.width < 430)
                 Spacer()
@@ -94,12 +94,11 @@ struct MainView: View {
             }
 
             cameraControls(
-                availableWidth: size.width,
+                availableSize: size,
                 safeAreaInsets: safeAreaInsets,
                 isLandscape: isLandscape
             )
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .padding(.bottom, captureButtonBottomPadding(isLandscape: isLandscape))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
         }
         .animation(.snappy(duration: 0.24), value: isControlPanelVisible)
     }
@@ -108,69 +107,99 @@ struct MainView: View {
         isLandscape ? 164 : 238
     }
 
-    private func captureButtonBottomPadding(isLandscape: Bool) -> CGFloat {
-        isControlPanelVisible ? controlPanelHeight(isLandscape: isLandscape) + 22 : 24
-    }
-
     private func cameraControls(
-        availableWidth: CGFloat,
+        availableSize: CGSize,
         safeAreaInsets: EdgeInsets,
         isLandscape: Bool
     ) -> some View {
-        let horizontalPadding: CGFloat = isLandscape ? 18 : 12
-        let spacing: CGFloat = isLandscape ? 16 : 12
-        let shutterSize: CGFloat = isCompactWidth(availableWidth) ? 64 : 72
-        let sideWidth = controlSideWidth(
-            availableWidth: availableWidth,
-            horizontalPadding: horizontalPadding,
-            spacing: spacing,
+        let trailingPadding: CGFloat = isLandscape ? 18 : 12
+        let controlTrailingPadding = max(trailingPadding, safeAreaInsets.trailing + 8)
+        let shutterToPickerSpacing: CGFloat = 18
+        let adjustmentToShutterSpacing: CGFloat = 30
+        let shutterSize: CGFloat = isCompactWidth(availableSize.width) ? 62 : 68
+        let adjustmentButtonSize: CGFloat = 44
+        let railWidth = controlRailWidth(availableSize: availableSize, isLandscape: isLandscape)
+        let pickerHeight = toolPickerHeight(availableSize: availableSize, isLandscape: isLandscape)
+        let adjustmentHeight = adjustmentButtonColumnHeight(for: controller.selectedTool)
+        let adjustmentOffset = adjustmentColumnOffset(
+            availableSize: availableSize,
+            safeAreaInsets: safeAreaInsets,
             shutterSize: shutterSize,
+            spacing: adjustmentToShutterSpacing,
+            columnHeight: adjustmentHeight,
             isLandscape: isLandscape
         )
 
-        return HStack(spacing: spacing) {
-            ToolModePicker(
-                selectedTool: $controller.selectedTool,
-                onTap: dismissAdjustment,
-                displayWidth: sideWidth
+        return ZStack(alignment: .trailing) {
+            AdjustmentButtonColumn(
+                controller: controller,
+                activeAdjustment: $activeAdjustment,
+                maxWidth: railWidth,
+                onReset: {
+                    controller.resetSelectedObjectScale()
+                }
             )
-            .frame(width: sideWidth, alignment: .trailing)
+            .padding(.trailing, controlTrailingPadding + max(0, (shutterSize - adjustmentButtonSize) / 2))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+            .offset(y: adjustmentOffset)
 
             ShutterButton(
                 isCapturing: controller.isCapturing,
                 size: shutterSize,
                 action: captureAndSave
             )
+            .padding(.trailing, controlTrailingPadding)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
 
-            AdjustmentButtonCluster(
-                controller: controller,
-                activeAdjustment: $activeAdjustment,
-                maxWidth: sideWidth,
-                onReset: {
-                    controller.resetSelectedObjectScale()
-                }
+            ToolModePicker(
+                selectedTool: $controller.selectedTool,
+                onTap: dismissAdjustment,
+                displayHeight: pickerHeight
             )
-            .frame(width: sideWidth, alignment: .leading)
+            .frame(width: 64, height: pickerHeight, alignment: .center)
+            .padding(.trailing, controlTrailingPadding + max(0, (shutterSize - 64) / 2))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+            .offset(y: shutterSize / 2 + shutterToPickerSpacing + pickerHeight / 2)
         }
-        .padding(.horizontal, horizontalPadding)
-        .padding(.vertical, 6)
-        .padding(.bottom, max(0, safeAreaInsets.bottom - 6))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func isCompactWidth(_ width: CGFloat) -> Bool {
         width < 390
     }
 
-    private func controlSideWidth(
-        availableWidth: CGFloat,
-        horizontalPadding: CGFloat,
-        spacing: CGFloat,
+    private func controlRailWidth(availableSize: CGSize, isLandscape: Bool) -> CGFloat {
+        let screenLimitedWidth = availableSize.width * (isLandscape ? 0.30 : 0.52)
+        let maxWidth: CGFloat = isLandscape ? 280 : 220
+        return max(150, min(maxWidth, screenLimitedWidth))
+    }
+
+    private func toolPickerHeight(availableSize: CGSize, isLandscape: Bool) -> CGFloat {
+        let maxHeight = availableSize.height * (isLandscape ? 0.32 : 0.30)
+        let minimumHeight: CGFloat = isLandscape ? 132 : 178
+        return max(minimumHeight, min(240, maxHeight))
+    }
+
+    private func adjustmentButtonColumnHeight(for tool: SceneTool) -> CGFloat {
+        let count = CGFloat(CaptureAdjustment.items(for: tool).count)
+        let buttonSize: CGFloat = 44
+        let spacing: CGFloat = 8
+        return count * buttonSize + max(0, count - 1) * spacing
+    }
+
+    private func adjustmentColumnOffset(
+        availableSize: CGSize,
+        safeAreaInsets: EdgeInsets,
         shutterSize: CGFloat,
+        spacing: CGFloat,
+        columnHeight: CGFloat,
         isLandscape: Bool
     ) -> CGFloat {
-        let rawWidth = (availableWidth - horizontalPadding * 2 - spacing * 2 - shutterSize) / 2
-        let maxWidth: CGFloat = isLandscape ? 320 : 156
-        return max(94, min(maxWidth, rawWidth))
+        let idealOffset = -(shutterSize / 2 + spacing + columnHeight / 2)
+        let topProtection = safeAreaInsets.top + (isLandscape ? 62 : 94)
+        let centerY = availableSize.height / 2
+        let minimumOffset = topProtection + columnHeight / 2 - centerY
+        return max(idealOffset, minimumOffset)
     }
 
     private func topBar(isCompact: Bool) -> some View {
@@ -376,49 +405,44 @@ private enum CaptureAdjustment: String, Identifiable, Equatable {
     }
 }
 
-private struct AdjustmentButtonCluster: View {
+private struct AdjustmentButtonColumn: View {
     @ObservedObject var controller: ARSceneController
     @Binding var activeAdjustment: CaptureAdjustment?
     let maxWidth: CGFloat
     let onReset: () -> Void
 
     var body: some View {
-        Group {
-            if let activeAdjustment {
-                InlineAdjustmentCapsule(
-                    adjustment: activeAdjustment,
-                    controller: controller,
-                    maxWidth: maxWidth,
-                    onClose: closeAdjustment
-                )
-                .transition(.scale(scale: 0.94, anchor: .leading).combined(with: .opacity))
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
+        VStack(alignment: .trailing, spacing: 8) {
+            VStack(spacing: 8) {
+                ForEach(CaptureAdjustment.items(for: controller.selectedTool)) { adjustment in
                     HStack(spacing: 8) {
-                        ForEach(CaptureAdjustment.items(for: controller.selectedTool)) { adjustment in
-                            Button {
-                                handleSelection(adjustment)
-                            } label: {
-                                Image(systemName: adjustment.systemImage)
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 38, height: 38)
-                                    .liquidGlassCircle()
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(adjustment.rawValue)
+                        if activeAdjustment == adjustment {
+                            InlineAdjustmentBar(
+                                adjustment: adjustment,
+                                controller: controller,
+                                maxWidth: max(86, maxWidth - 56),
+                                onClose: closeAdjustment
+                            )
+                            .transition(.scale(scale: 0.92, anchor: .trailing).combined(with: .opacity))
                         }
+
+                        Button {
+                            handleSelection(adjustment)
+                        } label: {
+                            Image(systemName: adjustment.systemImage)
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(activeAdjustment == adjustment ? .black : .white)
+                                .frame(width: 44, height: 44)
+                                .liquidGlassCircle(isSelected: activeAdjustment == adjustment)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(adjustment.rawValue)
                     }
-                    .padding(.horizontal, 6)
+                    .frame(maxWidth: maxWidth, alignment: .trailing)
                 }
-                .frame(width: maxWidth)
-                .clipShape(Capsule())
-                .padding(.horizontal, 6)
-                .padding(.vertical, 5)
-                .liquidGlassCapsule()
-                .transition(.scale(scale: 0.94, anchor: .leading).combined(with: .opacity))
             }
         }
+        .frame(width: maxWidth, alignment: .bottomTrailing)
         .animation(.snappy(duration: 0.22), value: activeAdjustment)
     }
 
@@ -426,10 +450,12 @@ private struct AdjustmentButtonCluster: View {
         switch adjustment {
         case .reset:
             onReset()
+            activeAdjustment = nil
         case .guides:
             controller.showsCompositionGuides.toggle()
+            activeAdjustment = nil
         default:
-            activeAdjustment = adjustment
+            activeAdjustment = activeAdjustment == adjustment ? nil : adjustment
         }
     }
 
@@ -438,40 +464,20 @@ private struct AdjustmentButtonCluster: View {
     }
 }
 
-private struct InlineAdjustmentCapsule: View {
+private struct InlineAdjustmentBar: View {
     let adjustment: CaptureAdjustment
     @ObservedObject var controller: ARSceneController
     let maxWidth: CGFloat
     let onClose: () -> Void
 
-    private var contentWidth: CGFloat {
-        max(64, maxWidth - 72)
-    }
-
     var body: some View {
-        let iconSize: CGFloat = 36
-
         HStack(spacing: 8) {
-            Button(action: onClose) {
-                Image(systemName: adjustment.systemImage)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.black)
-                    .frame(width: iconSize, height: iconSize)
-                    .liquidGlassCircle(isSelected: true)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Close \(adjustment.rawValue)")
-
-            Divider()
-                .frame(height: 26)
-                .overlay(.white.opacity(0.24))
-
             content
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 5)
-        .frame(width: maxWidth, alignment: .leading)
-        .liquidGlassCapsule()
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(maxWidth: maxWidth, alignment: .trailing)
+        .liquidGlassCapsule(material: .ultraThinMaterial, shadowOpacity: 0.12)
     }
 
     @ViewBuilder
@@ -508,21 +514,20 @@ private struct InlineAdjustmentCapsule: View {
                     } label: {
                         HStack(spacing: 5) {
                             Image(systemName: preset.systemImage)
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: 13, weight: .semibold))
                             Text(shortTitle(for: preset.rawValue))
                                 .font(.caption.weight(.semibold))
                                 .lineLimit(1)
                         }
-                        .padding(.horizontal, 10)
+                        .padding(.horizontal, 9)
                         .frame(height: 34)
                         .liquidGlassChip(isSelected: isSelected(preset))
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 6)
         }
-        .frame(width: contentWidth)
+        .frame(maxWidth: maxWidth - 16)
         .clipShape(Capsule())
     }
 
@@ -531,7 +536,7 @@ private struct InlineAdjustmentCapsule: View {
         selection: Binding<Option>
     ) -> some View where Option.RawValue == String {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 ForEach(options) { option in
                     Button {
                         selection.wrappedValue = option
@@ -540,30 +545,29 @@ private struct InlineAdjustmentCapsule: View {
                         Text(option.rawValue)
                             .font(.caption.weight(.semibold))
                             .lineLimit(1)
-                            .padding(.horizontal, 11)
+                            .minimumScaleFactor(0.75)
+                            .padding(.horizontal, 10)
                             .frame(height: 34)
                             .liquidGlassChip(isSelected: selection.wrappedValue == option)
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 6)
         }
-        .frame(width: contentWidth)
+        .frame(maxWidth: maxWidth - 16)
         .clipShape(Capsule())
     }
 
     private func sliderControl(value: Binding<Double>, range: ClosedRange<Double>) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 9) {
             Text("\(Int(value.wrappedValue * 100))%")
                 .font(.caption.monospacedDigit().weight(.bold))
                 .foregroundStyle(.white)
-                .frame(width: 40, alignment: .leading)
+                .frame(width: 38, alignment: .leading)
 
             Slider(value: value, in: range, step: 0.05)
-                .frame(width: max(52, contentWidth - 50))
+                .frame(width: max(56, maxWidth - 78))
         }
-        .frame(width: contentWidth, alignment: .leading)
     }
 
     private func isSelected(_ preset: AssetPreset) -> Bool {
@@ -580,31 +584,35 @@ private struct InlineAdjustmentCapsule: View {
 private struct ToolModePicker: View {
     @Binding var selectedTool: SceneTool
     let onTap: () -> Void
-    let displayWidth: CGFloat
+    let displayHeight: CGFloat
 
     @State private var dragTranslation: CGFloat = 0
     @State private var dragStartIndex: Int?
     @State private var previewIndex: Int?
 
     private let tools = SceneTool.allCases
-    private let itemSize: CGFloat = 38
-    private let itemSpacing: CGFloat = 44
+    private let itemSize: CGFloat = 44
+    private let itemSpacing: CGFloat = 52
     private let dragDamping: CGFloat = 0.62
 
     var body: some View {
         ZStack {
             Capsule()
-                .frame(width: 50, height: 50)
-                .liquidGlassCapsule()
+                .frame(width: 56, height: 56)
+                .foregroundStyle(.clear)
+                .overlay {
+                    Capsule()
+                        .stroke(.white.opacity(0.34), lineWidth: 1)
+                }
 
-            HStack(spacing: itemSpacing - itemSize) {
+            VStack(spacing: itemSpacing - itemSize) {
                 ForEach(tools) { tool in
                     toolIcon(tool)
                 }
             }
-            .offset(x: pickerOffset)
+            .offset(y: pickerOffset)
         }
-        .frame(width: displayWidth, height: 58)
+        .frame(width: 64, height: displayHeight)
         .clipped()
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
@@ -632,7 +640,7 @@ private struct ToolModePicker: View {
             .onChanged { value in
                 let startIndex = dragStartIndex ?? selectedIndex
                 dragStartIndex = startIndex
-                let dampedTranslation = value.translation.width * dragDamping
+                let dampedTranslation = value.translation.height * dragDamping
                 let clampedTranslation = clampedTranslation(dampedTranslation, startingAt: startIndex)
                 dragTranslation = clampedTranslation
                 previewIndex = index(startingAt: startIndex, translation: clampedTranslation)
@@ -665,8 +673,8 @@ private struct ToolModePicker: View {
         let isActive = tools[activeIndex] == tool
 
         return Image(systemName: tool.systemImage)
-            .font(.system(size: isActive ? 20 : 17, weight: .semibold))
-            .foregroundStyle(isActive ? .white : .primary)
+            .font(.system(size: isActive ? 22 : 18, weight: .semibold))
+            .foregroundStyle(isActive ? .white : .white.opacity(0.74))
             .frame(width: itemSize, height: itemSize)
             .background(
                 Circle()
