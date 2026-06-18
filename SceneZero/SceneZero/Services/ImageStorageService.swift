@@ -10,12 +10,12 @@ struct ImageStorageService {
     private let folderName = "LookbookImages"
 
     func save(_ image: UIImage) throws -> String {
-        guard let data = image.jpegData(compressionQuality: 0.88) else {
+        guard let data = image.pngData() else {
             throw StorageError.couldNotEncodeImage
         }
 
         let directory = try imageDirectory()
-        let fileName = "\(UUID().uuidString).jpg"
+        let fileName = "\(UUID().uuidString).png"
         let url = directory.appendingPathComponent(fileName)
         try data.write(to: url, options: .atomic)
         return "\(folderName)/\(fileName)"
@@ -26,6 +26,10 @@ struct ImageStorageService {
             return nil
         }
         return UIImage(contentsOfFile: url.path)
+    }
+
+    func fileURL(relativePath: String) -> URL? {
+        try? baseDirectory().appendingPathComponent(relativePath)
     }
 
     func delete(relativePath: String) {

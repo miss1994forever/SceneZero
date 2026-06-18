@@ -2,10 +2,11 @@ import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        MainView()
+        RootTabView()
     }
 }
 
 #Preview {
     ContentView()
+        .modelContainer(for: [LookbookEntry.self, LookbookBoard.self], inMemory: true)
 }

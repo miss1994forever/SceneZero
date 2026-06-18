@@ -6,15 +6,15 @@
 
 - 优先完成可演示闭环：AR 放置 → 参数调节 → 快照 → 拍摄后滤镜 → 本地保存 → Prompt 生成。
 - 不实现实时 60fps 全局后处理、不做完整视频生成、不追求真实墙面物理打光。
-- 第一版资产采用“内置轻量 `.usdz` + RealityKit primitives fallback”。当前已加入人物、椅子、桌子、沙发、书桌、书架、床、床头柜和灯架等模型；不做在线素材库。
+- 第一版资产采用“内置轻量 `.usdz` + RealityKit primitives fallback”。当前已加入人物、椅子、桌子、沙发、书桌、书架、床、床头柜等模型；Light 不使用真实灯具或灯架模型，而使用抽象光位标记；不做在线素材库。
 - 图片文件写入 App 沙盒目录，SwiftData 只保存元数据和图片路径。
 - 历史场景重载使用“主体锚点 + 相对坐标”，不做跨 session 精确 `ARWorldMap` 恢复。
 - 灯光效果采用“三层模拟”方案：RealityKit light 影响虚拟物体，屏幕空间 overlay 预览现实画面上的光斑/光束，Capture 后把 overlay 合成到静态截图中。
 - Camera 不作为空间中的虚拟摄影机模型实现。第一版改为 Frame / Lens 构图工具，用画幅遮罩、构图线、镜头类型和截图裁切/遮罩来辅助生成 AI 参考图。
 - UI 优先贴近 Apple Human Interface Guidelines：AR 画面优先、控件轻量、层级清晰、使用系统控件和 SF Symbols、避免长期遮挡取景区域。
 - 主界面不再使用长期占屏的 `ControlPanelView`。当前真实实现采用右侧 Apple Camera-style 控制列：中部 `Capture`、下方纵向模式选择、上方当前模式调节按钮。
-- Capture 和 Lookbook 不属于参数调节工具。Capture 作为独立高频主操作按钮常驻在右侧中线；Lookbook 作为顶部轻量入口打开独立页面。
-- 产品结构按多界面设计推进：Capture 负责 AR 采集，Studio 负责 Lookbook / 灵感夹 / 项目管理，Explore 作为未来电影参考图浏览与搜索界面。
+- Capture 和 Lookbook 不属于参数调节工具。Capture 作为独立高频主操作按钮常驻在右侧中线；Lookbook 作为底部 Tab 中的独立页面。
+- 产品结构按底部 Tab 多界面设计推进：`Capture` 负责 AR 采集，`Lookbook` 负责灵感集 / 参考图 / Prompt 管理，`Profile` 负责用户信息和轻量设置。默认进入 `Capture`。
 - AR 物体交互已从“面板参数调节”升级为“直接操控”：支持 tap 选中、拖拽移动、双指缩放和双指旋转；Size 滑杆不进入主界面常驻控制。
 - 内置模型交互已改为更贴近可见模型范围的 collision proxy，优先选中最近放置/最上层命中的对象，避免在离模型较远处误拖动其他物体。
 - AR 放置优先使用水平面 raycast。USDZ 模型根据未缩放 `visualBounds` 做尺寸归一化和贴地修正，减少模型悬空或沉入地面的情况。
@@ -32,7 +32,9 @@ SceneZero 的灯光功能目标不是让虚拟灯真正改变现实墙面或桌�
 ### 最佳方案：三层灯光模拟
 
 1. **RealityKit 虚拟灯光层**
-   - 用户添加 Light 后，在 AR 空间中创建灯位标记。
+   - 用户添加 Light 后，在 AR 空间中创建抽象灯位标记。
+   - 灯位标记只用于表达光源位置和交互热点，不应显示真实灯具或灯架 3D 模型。
+   - 第一版标记形态优先使用高透明球体、emissive 小球、细光环、十字定位点或仅在选中时显示的轻量 marker。
    - 同时创建 RealityKit 的 `SpotLight` 或 `PointLight`，用于影响虚拟 `Subject`、`Prop` 等 primitives。
    - 该层只影响虚拟物体，不影响真实摄像头画面。
 
@@ -135,8 +137,9 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
 
 1. **顶部状态胶囊**
    - 左侧显示 AR 状态，例如 surface / capture / placement 状态。
-   - 右侧提供 Lookbook 入口、Reset Scene 和 Composition Guides 开关。
+   - 右侧提供 Reset Scene 和 Composition Guides 开关。
    - 顶部不再提供泛用 `slider.horizontal.3` 高级参数面板入口。
+   - Lookbook 不再放在顶部状态胶囊中，而是作为底部 Tab 的独立页面。
 
 2. **右侧常驻控制列**
    - 中部：白色圆形 `Capture` 快门按钮，固定在右侧垂直中线。
@@ -157,7 +160,7 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
 
 5. **Capture / Lookbook 分离**
    - Capture 是最高频主动作，常驻右侧中线。
-   - Lookbook 是结果管理入口，放在顶部状态胶囊中，通过 sheet / NavigationStack 打开独立页面。
+   - Lookbook 是结果管理入口，放在底部 Tab 栏中，通过独立 `NavigationStack` 管理 Boards、网格和详情页。
    - `ControlPanelView` 已移除，主界面不再保留备用大面板。
 
 ### 模式与调节按钮分工
@@ -176,6 +179,9 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
   - `Shot`：选择 Wide Shot / Medium Shot / Close-Up / Low Angle。
   - `Filter`：选择 Realistic / Teal Orange / Neon Night / Noir Gold。
 - `Light` 模式：
+  - Light 是打光工具，不是场景中的真实道具。
+  - 添加 Light 时创建抽象 Light Marker，而不是 `LampStand` / 灯架 3D 模型。
+  - Marker 需要保持低干扰：高透明、小尺寸、可选中、可拖动、能够表达灯位即可。
   - `Direction`：选择 Key Left / Rim Right / Front Soft / Top / Low Side。
   - `Color`：选择 3200K / 4500K / 5600K / 7000K。
   - `Intensity`：短滑杆，影响 RealityKit light 和 overlay opacity。
@@ -199,63 +205,84 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
 - Frame Line 始终稳定显示并代表最终裁切边界。
 - Lookbook 保存图与屏幕取景框一致。
 
-## 四点六、多界面信息架构
+## 四点六、底部 Tab 多界面信息架构
 
 ### 目标
 
-将 SceneZero 从单一 AR 工具整理为轻量的 AIGC 电影前制工作台，同时控制 Final Project 的实现范围。
+将 SceneZero 从单一 AR 工具整理为轻量的 AIGC 电影前制工作台。第一版采用 iOS 原生底部 `TabView` 作为一级导航，默认进入 `Capture`，同时控制 Final Project 的实现范围。
 
 ### 界面结构
 
 1. **Capture**
-   - 当前 AR 主界面。
+   - 默认选中的首页，也是当前 AR 主界面。
    - 负责放置 Subject / Prop / Light。
    - 负责 Frame / Lens 构图、打光预览、Capture 和 Prompt 生成。
    - 保持最轻，不承载历史管理和参考图搜索。
 
-2. **Studio**
-   - 用户个人工作区。
-   - 包含 Lookbook。
-   - 包含灵感夹 / 项目分区。
-   - 可以用 Pinterest-like 瀑布流或网格展示历史截图和参考图。
-   - 每个灵感夹保存图片、Prompt、Frame / Lens、Light 参数和备注。
+2. **Lookbook**
+   - 灵感集 / 参考图管理页。
+   - 顶层展示 Boards / 灵感集，例如 `All Captures`、`Favorites` 和用户创建的自定义灵感集。
+   - Board 卡片可使用最近 3-4 张参考图拼贴作为封面，视觉方向接近 Pinterest 图板。
+   - 顶层包含一个创建灵感集的占位 Board 卡片，使用简洁文字提示点击创建，不在右上角放单独加号按钮。
+   - 点击 Board 进入参考图统一平铺网格，所有 captures 使用稳定的同尺寸卡片显示。
+   - Board 详情网格必须按屏幕宽度计算固定列宽、左右安全边距和 capture 卡片间隙，避免贴边、裁切或互相挤压。
+   - 点击参考图进入详情页，展示大图、Prompt、Frame / Lens、Shot、Filter、Light records、Asset presets 和备注。
+   - 详情页支持 Copy Prompt 和通过系统 Share Sheet 导出图像。
+   - 支持创建、重命名、删除灵感集，以及将参考图移动到不同灵感集。
 
-3. **Explore** future work
-   - 浏览和搜索已有电影场景图片作为参考灵感。
-   - 可按电影名、镜头类型、色彩风格、光位、空间类型筛选。
-   - 第一版不接入云端电影图库，最多使用本地 mock 数据或手动导入参考图。
+3. **Profile**
+   - 用户界面。
+   - 第一版先保持轻量，可展示用户头像/名称、Capture 数量、Boards 数量、默认偏好、导出入口和关于信息。
+   - 不做账号系统、云同步、社交关系或在线个人主页。
+   - 未来可扩展为项目管理、导出设置、课程演示说明和本地数据管理入口。
 
 ### Final Project 建议范围
 
+- 必做：底部 Tab 一级导航，默认进入 Capture。
 - 必做：Capture 主界面。
-- 建议做：Studio / Lookbook 独立界面。
-- 可选做：Lookbook 灵感夹分区。
+- 建议做：Lookbook 独立 Tab、Boards 灵感集列表、Board 详情网格、参考图详情页。
+- 可选做：Profile 统计与偏好设置。
 - 不建议做：真实在线电影图库、账号系统、云端同步、素材市场。
 
 ### 实现步骤
 
-1. 将 `LookbookView` 升级为 Studio 入口：
-   - 顶部展示最近捕获。
+1. 创建 `RootTabView`：
+   - 使用 `TabView(selection:)`。
+   - 三个 Tab：`Capture`、`Lookbook`、`Profile`。
+   - 默认 selection 为 `.capture`。
+   - 每个 Tab 内部使用独立 `NavigationStack`。
+2. 将当前 `MainView` 放入 `Capture` Tab：
+   - 保留右侧 Camera-style 控制列。
+   - Capture 成功后保存到 Lookbook，并用轻量状态提示确认。
+3. 将 `LookbookView` 升级为 Lookbook Tab 入口：
+   - 顶层展示 Boards / 灵感集。
    - 提供 All Captures。
-   - 提供 Boards / 灵感夹列表。
-2. 为 `LookbookEntry` 增加 board / collection 字段：
+   - 提供 Favorites。
+   - 提供 Create Board 占位卡片。
+4. 为 `LookbookEntry` 增加 board / collection 字段：
    - 默认 `All Captures`。
    - 可标记 Favorites。
-   - 后续支持自定义 board 名称。
-3. 创建简单 board UI：
+   - 支持自定义 board 名称或 board id。
+5. 创建 board UI：
    - Board 列表。
-   - Board 详情网格。
+   - Board 详情统一平铺网格。
+   - Board 详情网格按屏幕宽度计算列数、固定 tile width、左右 padding 和卡片间距，保证 captures 完整显示。
    - 图片详情页继续展示 Prompt 和参数。
-4. Explore 暂时只写入文档：
-   - 如果时间充足，可以做本地静态参考图库。
-   - 不引入服务器依赖。
+6. 创建轻量 `ProfileView`：
+   - 显示用户头像/名称占位。
+   - 显示 Captures / Boards 统计。
+   - 提供导出、清理缓存或关于入口占位。
 
 ### 验收标准
 
-- Capture 与 Studio 入口清晰分离。
-- 用户可以在 Studio 中查看历史截图。
+- App 启动默认进入 `Capture` Tab。
+- 底部 Tab 可以在 `Capture / Lookbook / Profile` 之间切换。
+- Capture 与 Lookbook 入口清晰分离。
+- 用户可以在 Lookbook 中查看历史截图。
 - 用户可以按至少一个维度分组或筛选 Lookbook。
-- Explore 被明确标注为未来扩展或静态 mock，不影响主演示链路。
+- 用户可以创建至少一个自定义灵感集。
+- 用户可以点击灵感集进入参考图网格，再点击参考图查看详情和 Prompt。
+- Profile 页面可先保持轻量，但必须作为独立 Tab 存在。
 
 ## 四点七、内置 3D 模型资源方案
 
@@ -274,7 +301,7 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
    - 当前已内置：
      - `Human.usdz`：Quaternius Background Posed Humans Pack 的 `Female_Standing`，CC0。
      - `Chair.usdz`、`Table.usdz`、`Sofa.usdz`、`Desk.usdz`、`Bookcase.usdz`、`Bed.usdz`、`NightStand.usdz`：Quaternius Ultimate Furniture Pack，CC0。
-     - `LampStand.usdz`：Kenney Furniture Kit，CC0。
+     - `LampStand.usdz`：历史灯具资源，后续不再作为默认 Light 可见模型；Light 改用抽象 marker。
    - 保留 `Subject Block` 和 `Prop Box` 作为程序生成 fallback / 快速占位资产。
    - 动画角色、高清贴图角色、复杂室内套装、在线素材搜索作为 future work。
 
@@ -294,7 +321,7 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
 已实现 Asset Preset 概念：
 
 - `AssetCategory`: subject / prop / lightMarker。
-- `AssetPreset`: subjectBlock / human / propBox / chair / table / sofa / desk / bookcase / bed / nightStand / lampStand。
+- `AssetPreset`: subjectBlock / human / propBox / chair / table / sofa / desk / bookcase / bed / nightStand。Light 使用抽象 light marker，不作为真实灯具资产 preset 展示。
 - `bundleModelName`: 用于加载 bundle 中的 `.usdz`。
 - `defaultScale`: 不同模型的默认缩放。
 - `fallbackPrimitive`: 模型失败时使用的 primitive。
@@ -307,7 +334,7 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
 3. 新建资源目录：
    - 当前目录：`SceneZero/SceneZero/Assets3D/`。
    - 文件命名与 `AssetPreset.bundleModelName` 保持一致，例如 `Human.usdz`、`Chair.usdz`、`Table.usdz`、`Sofa.usdz`。
-   - 当前已加入 9 个 `.usdz` 资源：Human、Chair、Table、Sofa、Desk、Bookcase、Bed、NightStand、LampStand。
+   - 当前主要展示 8 个 `.usdz` 资源：Human、Chair、Table、Sofa、Desk、Bookcase、Bed、NightStand。`LampStand` 资源保留为历史文件，但 Light 默认不再显示真实灯具模型。
 4. 控制资产范围：
    - 优先选择低面数、白模、静态模型。
    - 单个 `.usdz` 尽量控制在 1-5 MB。
@@ -418,11 +445,11 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
 2. 创建 RealityKit primitives 占位资产：
    - 人物：胶囊形或竖直圆柱。
    - 道具：不同尺寸 box。
-   - 灯光：小 sphere + 方向锥体。
+   - 灯光：高透明小 sphere、细光环或简洁方向 marker；不使用真实灯架模型。
 3. 加入少量内置 3D 模型 preset：
    - Subject 支持 primitive / human。
    - Prop 支持 box / chair / table / sofa / desk / bookcase / bed / night stand。
-   - Light 支持 lamp stand。
+   - Light 支持抽象 light marker。
    - 模型加载失败时回退 primitive。
    - 每个 preset 定义默认 scale、proxy size、地面高度和图标。
    - Bundle 模型使用 `visualBounds` 自动缩放并对齐地面。
@@ -447,7 +474,7 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
    - 在检测到的水平面上放置低可见度平面。
    - 用于增强虚拟物体落地感。
 7. 实现 RealityKit 虚拟灯光：
-   - 添加 Light 时创建灯位标记。
+   - 添加 Light 时创建抽象灯位标记。
    - 同时创建 `SpotLight` 或 `PointLight`。
    - 灯光颜色由色温档位转换得到。
    - 灯光强度由 Intensity 参数控制。
@@ -477,7 +504,7 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
 
 - 用户可以在真实空间中放置人物、道具和灯光占位物。
 - 用户可以选择内置 3D 模型 preset，并在失败时回退 primitive。
-- 人物、家具和灯架模型能正常显示，且默认比例适合 AR 勘景。
+- 人物和家具模型能正常显示，且默认比例适合 AR 勘景；Light marker 应保持抽象、轻量、低遮挡。
 - 用户可以通过拖拽、双指缩放和双指旋转直接调整 AR 物体。
 - 用户需要直接命中模型附近才能选中/拖动，不应在明显远离模型处误触。
 - 用户可以在 AR 画面上切换画幅、镜头语言、Shot Type 和 Filter，并看到可见的构图或视觉风格变化。
@@ -544,11 +571,11 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
 - 保存到 Lookbook 的图片应接近实时预览中看到的打光效果。
 - 处理后的图片能写入本地沙盒目录。
 
-## 七、阶段 3：Studio / SwiftData 画廊与 Prompt 生成
+## 七、阶段 3：Lookbook / Profile / SwiftData 与 Prompt 生成
 
 ### 目标
 
-完成 Studio 工作区、Lookbook 画廊、本地持久化和确定性 Prompt 生成。
+完成底部 Tab 多界面结构、Lookbook 灵感集、本地持久化、轻量 Profile 和确定性 Prompt 生成。
 
 ### 建议任务
 
@@ -579,23 +606,29 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
    - 多灯时生成 multi-light cinematic setup 汇总。
    - 支持一键复制。
 4. 实现 Lookbook 画廊：
-   - Lookbook 作为独立界面，不放在参数调节面板中。
-   - 主界面只保留轻量入口，例如顶部图标按钮或独立 sheet 入口。
+   - Lookbook 作为底部 Tab 独立界面，不放在 Capture 参数调节面板中。
    - 缩略图列表或网格。
    - 详情页展示图片、Prompt 和参数。
+   - 详情页图片不应放大超过保存图的原始像素宽度，避免低分辨率裁切图被过度放大。
+   - Lookbook 内部返回使用自定义纯箭头按钮，不显示系统默认蓝色上一页标题。
    - 删除记录时同步删除图片文件。
-5. 实现 Studio / 灵感夹：
+5. 实现 Lookbook / 灵感夹：
    - 提供 All Captures。
    - 提供 Favorites 或 Boards。
    - 支持至少一个默认 board。
    - 可选支持用户创建自定义 board。
-6. 实现相对布光方案保存：
+6. 实现 Profile Tab：
+   - 显示用户名称、头像占位和本地统计。
+   - 显示 Captures / Boards 数量。
+   - 提供导出、清理缓存、关于项目等入口占位。
+   - 第一版不做账号登录、云同步或社交功能。
+7. 实现相对布光方案保存：
    - 主体占位符作为局部原点。
    - 其他物体保存相对位置、旋转、类型和参数。
    - Asset preset 需要一并保存。
    - Light 记录需要额外保存方向、色温、强度和 overlay 参数。
    - Frame / Lens 记录需要保存画幅比例、Lens、Shot Type 和 Filter。
-7. 实现相对布光方案重载：
+8. 实现相对布光方案重载：
    - 用户先在地面重新放置主体锚点。
    - 系统按相对坐标整体复现灯光与道具布局。
    - 系统恢复 RealityKit 虚拟灯光和屏幕空间 overlay 参数。
@@ -603,8 +636,10 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
 ### 验收标准
 
 - 画廊中可以看到历史截图。
-- Studio 中可以按 All Captures / Board 查看内容。
+- Lookbook 中可以按 All Captures / Board 查看内容。
 - 详情页可以复制 Prompt。
+- 详情页可以导出参考图像。
+- Profile Tab 可以显示基础用户信息和本地统计。
 - 重载历史记录时，不依赖旧 session 的绝对世界坐标。
 - 历史记录能保留每盏 Light 的方向、色温、强度和合成效果参数。
 - 历史记录能保留 Frame / Lens 的画幅、镜头语言、Shot Type 和 Filter。
@@ -626,8 +661,10 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
    - 上方当前模式调节按钮。
    - 按钮左侧内联参数胶囊：chip picker、短滑杆。
    - 顶部 Composition Guides 开关。
-   - 独立 Lookbook 页面入口。
-   - Studio / 灵感夹入口。
+   - 底部 Tab 栏：Capture / Lookbook / Profile。
+   - 默认进入 Capture Tab。
+   - Lookbook 灵感集入口。
+   - Profile 用户入口。
    - 横屏默认沉浸式取景。
    - Filter 合并在 Frame 模式内。
    - Capture 状态反馈。
@@ -654,8 +691,10 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
    - Capture。
    - 合成光效并应用滤镜。
    - 保存到 Lookbook。
-   - 在 Studio / Board 中查看结果。
+   - 通过底部 Tab 切到 Lookbook。
+   - 在 Board / 灵感集中查看结果。
    - 复制 Prompt。
+   - 切到 Profile 查看基础统计或设置入口。
    - 重载相对布光方案。
 4. 整理文档：
    - 每日开发日志。
@@ -690,16 +729,17 @@ SceneZero 的构图功能不是替代专业摄影机控制，也不是一般电�
 15. CoreImage 拍摄后滤镜。
 16. 文件写入服务。
 17. SwiftData 元数据模型。
-18. Studio / Lookbook 画廊。
-19. Prompt 模板拼接。
-20. 相对布光方案保存与重载。
-21. 分离 Capture 和 Lookbook：Capture 独立常驻，Lookbook 独立页面入口。
-22. Apple Camera-style 右侧控制列：右侧中线 shutter、下方纵向模式选择、上方当前模式调节按钮。
-23. 将 Subject / Prop 的 Size 滑杆从主界面移除，保留手势缩放和 Reset。
-24. 将 Shot 和 Filter 合并进 Frame 调节组，将 Guides 作为顶部显示辅助开关。
-25. Apple 风格 UI polish：轻量浮层、固定选择位、横竖屏 safe area 验证。
-26. Explore 静态 mock 或未来扩展说明。
-27. 演示准备。
+18. 底部 Tab 根结构：Capture / Lookbook / Profile，默认进入 Capture。
+19. Lookbook Boards 灵感集列表、Board 详情网格、参考图详情。
+20. Profile 轻量用户页和本地统计。
+21. Prompt 模板拼接。
+22. 相对布光方案保存与重载。
+23. 分离 Capture 和 Lookbook：Capture 独立常驻，Lookbook 独立 Tab。
+24. Apple Camera-style 右侧控制列：右侧中线 shutter、下方纵向模式选择、上方当前模式调节按钮。
+25. 将 Subject / Prop 的 Size 滑杆从主界面移除，保留手势缩放和 Reset。
+26. 将 Shot 和 Filter 合并进 Frame 调节组，将 Guides 作为顶部显示辅助开关。
+27. Apple 风格 UI polish：轻量浮层、固定选择位、底部 Tab、横竖屏 safe area 验证。
+28. 演示准备。
 
 ## 十、每日开发日志建议
 

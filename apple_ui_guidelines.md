@@ -23,35 +23,34 @@ SceneZero should evolve toward a multi-screen app:
    - Independent capture shutter.
    - Minimal floating controls.
 
-2. **Studio**
-   - Profile-like workspace.
-   - Lookbook.
+2. **Lookbook**
    - Inspiration boards.
+   - Pinterest-like board entry grid.
+   - Board detail grids for captured references with uniform tile sizes.
    - Saved prompts and captured scene metadata.
    - Asset presets used in captured scenes.
 
-3. **Explore** later
-   - Film scene references.
-   - Search and filters.
-   - Save reference images into boards.
-   - Local mock content is preferred for the course version.
+3. **Profile**
+   - Lightweight user surface.
+   - Local capture / board statistics.
+   - Preferences, export, and about entries.
+   - No account or cloud dependency in the course version.
 
-For the course version, prioritize Capture and a basic Studio / Lookbook page. Explore can remain future work.
+Use a native bottom `TabView` for the course version. The default selected tab must be Capture.
 
 ## 2.1 Scope Rules For Multi-Screen Design
 
 Course version:
 
 - Capture screen must be reliable.
-- Studio can be simple but should feel independent from Capture.
-- Lookbook can live inside Studio.
+- Lookbook must be independent from Capture and reachable from the bottom tab bar.
 - Boards can start with All Captures and Favorites.
-- Explore can be documented or mocked with local images.
+- Profile can be simple, but it should exist as a separate bottom tab.
 
 Future product:
 
-- Explore can support film-reference search.
-- Studio can support project folders and Pinterest-like boards.
+- Lookbook can support project folders and richer Pinterest-like boards.
+- Profile can support project preferences and export workflows.
 - Cloud sync, account systems, and online asset libraries are future work.
 
 ## 3. Capture Screen Rules
@@ -158,33 +157,60 @@ Collapsed capture-mode behavior:
 - Preferred Camera-style variant: keep a fixed selection position and let tool icons slide underneath it. The tool under the fixed selection position becomes selected.
 - Place tool selection beside the shutter button when possible, so Capture and mode selection form one camera-style control cluster.
 
-## 7. Lookbook / Studio
+## 7. Bottom Tabs
 
-Lookbook is not a tool-panel action. It belongs to Studio or a dedicated page.
+SceneZero uses bottom tabs for primary navigation.
+
+Tabs:
+
+- Capture.
+- Lookbook.
+- Profile.
+
+Rules:
+
+- Default selected tab is Capture.
+- Use native `TabView` behavior and SF Symbols.
+- Keep tab labels short.
+- Do not duplicate Lookbook as a primary top-bar button in Capture.
+- Ensure the Capture shutter, right-side tool controls, and bottom tab bar do not overlap.
+- In landscape, prefer compact tab styling or safe-area-aware layout.
+
+## 7.1 Lookbook
+
+Lookbook is the independent inspiration-board surface.
 
 For the course version:
 
-- A top-bar icon is acceptable.
-- A sheet is acceptable if the page is clearly independent.
-- The Lookbook page should show captures, prompts, and metadata.
+- Top level shows boards / inspiration folders.
+- Include All Captures and Favorites by default.
+- Allow creating custom boards.
+- Use a placeholder board card for creating custom boards instead of a separate top-right plus button.
+- Board detail shows captured references in a simple uniform grid, not a masonry layout.
+- Board detail grids must compute fixed tile widths, horizontal safe padding, and fixed spacing between capture tiles.
+- Reference detail shows image, prompt, and metadata.
+- Reference detail should provide Copy Prompt and Export Image actions.
+- Reference detail images should not be enlarged beyond their saved pixel width.
+- Lookbook navigation should use a custom icon-only back button instead of the default blue text back label.
 
-Future Studio direction:
-
-- Profile-like workspace.
-- Boards / inspiration folders.
-- Pinterest-like masonry grid.
-- Saved prompt collections.
-- Project-based grouping.
-
-Studio UI rules:
+Lookbook UI rules:
 
 - Do not reuse the AR capture control panel style.
-- Use standard NavigationStack / sheet patterns.
+- Use standard NavigationStack patterns.
 - Boards should feel like collections, not settings.
 - Captured images should be the visual focus.
 - Metadata should be visible in detail pages, not crowded into grid cells.
 
-## 7.1 Explore
+## 7.2 Profile
+
+Profile is a lightweight user page in the course version.
+
+- Show user name / avatar placeholder.
+- Show local statistics such as Captures and Boards.
+- Provide export, preferences, and about entries if needed.
+- Do not implement accounts, followers, cloud sync, or public profile pages.
+
+## 7.3 Explore
 
 Explore is a future reference-browsing surface.
 
@@ -192,7 +218,7 @@ Course-friendly version:
 
 - Use local mock reference images if implemented.
 - Provide simple filters such as Shot, Color, Light, Space.
-- Let users save a reference into a Studio board.
+- Let users save a reference into a Lookbook board.
 
 Avoid for Final Project:
 
@@ -210,7 +236,7 @@ Possible floating controls:
 
 - Tool panel opener: bottom-right, `slider.horizontal.3`.
 - Capture shutter: bottom center in portrait, right/lower-right in landscape.
-- Lookbook / Studio: top bar icon or separate tab.
+- Lookbook and Profile should use the bottom tab bar, not floating buttons.
 
 Rules:
 
@@ -318,8 +344,8 @@ Course-friendly asset strategy:
   - Chair.
   - Table.
   - Sofa.
-  - Lamp stand.
   - Prop box.
+- Light is not a visible furniture preset. Use an abstract marker instead of a realistic lamp or lamp stand.
 - Avoid cloud asset libraries for the course version.
 - Avoid large or copyright-unclear model packs.
 
@@ -330,6 +356,7 @@ Asset UI rules:
 - Show failed model loads as fallback primitives with a lightweight warning.
 - Store asset preset metadata in captured records.
 - Keep scale defaults per preset so objects appear at usable size.
+- Keep Light markers lightweight, translucent, and low-distraction; their purpose is to show light position, not to become scene furniture.
 
 ## 12.2 AR Gesture Rules
 
@@ -393,9 +420,9 @@ Recommended next steps:
 
 1. Replace the current rectangular Capture button with a shutter-style circular control.
 2. Fine-tune Capture and tool opener positions in portrait and landscape.
-3. Move Lookbook toward a Studio page or clearer independent sheet.
-4. Add boards / inspiration folders to Lookbook.
-5. Test object manipulation gestures with RealityKit.
-6. Consider a compact toolbar-only mode for landscape.
-7. Add bundled asset presets with primitive fallback.
-8. Document Explore as future work or implement only local mock references.
+3. Add a native bottom TabView with Capture, Lookbook, and Profile.
+4. Make Capture the default selected tab.
+5. Add boards / inspiration folders to Lookbook.
+6. Test object manipulation gestures with RealityKit.
+7. Consider a compact toolbar-only mode for landscape.
+8. Add bundled asset presets with primitive fallback.

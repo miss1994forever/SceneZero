@@ -1,12 +1,19 @@
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct MainView: View {
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: \LookbookEntry.createdAt, order: .reverse) private var entries: [LookbookEntry]
+    @Query(sort: \LookbookBoard.sortIndex) private var customBoards: [LookbookBoard]
+
+    @AppStorage("usesRealityKitModelLighting") private var usesRealityKitModelLighting = false
+
     @StateObject private var controller = ARSceneController()
-    @State private var showsLookbook = false
     @State private var alertMessage: String?
     @State private var activeAdjustment: CaptureAdjustment?
+    @State private var pendingCapture: PendingLookbookCapture?
+    @State private var showsDeleteConfirmation = false
 
     private let filterService = FilterService()
     private let imageStorage = ImageStorageService()
@@ -58,9 +65,6 @@ struct MainView: View {
                 }
             }
         }
-        .sheet(isPresented: $showsLookbook) {
-            LookbookView()
-        }
         .alert("SceneZero", isPresented: Binding(
             get: { alertMessage != nil },
             set: { if !$0 { alertMessage = nil } }
@@ -69,8 +73,35 @@ struct MainView: View {
         } message: {
             Text(alertMessage ?? "")
         }
+        .alert("Delete Object?", isPresented: $showsDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                controller.deleteSelectedObject()
+            }
+        } message: {
+            Text("This removes the selected object from the scene.")
+        }
         .onChange(of: controller.selectedTool) { _, _ in
             dismissAdjustment()
+        }
+        .onAppear {
+            controller.setRealityKitModelLightingEnabled(usesRealityKitModelLighting)
+        }
+        .onChange(of: usesRealityKitModelLighting) { _, newValue in
+            controller.setRealityKitModelLightingEnabled(newValue)
+        }
+        .sheet(item: $pendingCapture) { capture in
+            SaveCaptureSheet(
+                capture: capture,
+                boardNames: movableBoardNames,
+                existingBoardNames: allBoardNames,
+                onCancel: {
+                    pendingCapture = nil
+                },
+                onSave: { title, boardName in
+                    savePendingCapture(capture, title: title, boardName: boardName)
+                }
+            )
         }
     }
 
@@ -124,6 +155,10 @@ struct MainView: View {
                 maxWidth: railWidth,
                 onReset: {
                     controller.resetSelectedObjectScale()
+                },
+                onDelete: {
+                    activeAdjustment = nil
+                    showsDeleteConfirmation = true
                 }
             )
             .padding(.trailing, controlTrailingPadding + max(0, (shutterSize - adjustmentButtonSize) / 2))
@@ -228,17 +263,6 @@ struct MainView: View {
             Spacer()
 
             Button {
-                showsLookbook = true
-            } label: {
-                Image(systemName: "photo.on.rectangle")
-                    .font(.system(size: isCompact ? 13 : 14, weight: .semibold))
-                    .frame(width: isCompact ? 30 : 32, height: isCompact ? 30 : 32)
-                    .liquidGlassCircle()
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Lookbook")
-
-            Button {
                 controller.resetScene()
             } label: {
                 Image(systemName: "arrow.counterclockwise")
@@ -275,6 +299,14 @@ struct MainView: View {
         }
     }
 
+    private var movableBoardNames: [String] {
+        [LookbookBoard.defaultBoardName] + customBoards.map(\.name)
+    }
+
+    private var allBoardNames: [String] {
+        movableBoardNames + [LookbookBoard.favoritesBoardName]
+    }
+
     private func captureAndSave(viewportSize: CGSize, framingInsets: FramingSafeInsets) {
         dismissAdjustment()
 
@@ -301,13 +333,12 @@ struct MainView: View {
                 )
                 let filteredImage = filterService.apply(captured.filterPreset, to: litImage)
                 do {
-                    let imagePath = try imageStorage.save(filteredImage)
                     let layoutData = try JSONEncoder().encode(captured.layoutRecords)
                     let layoutJSON = String(data: layoutData, encoding: .utf8) ?? "[]"
                     let lightSummary = PromptService.lightSummary(for: captured.layoutRecords)
-                    let entry = LookbookEntry(
-                        title: "Scene \(Date().formatted(date: .numeric, time: .shortened))",
-                        imagePath: imagePath,
+                    pendingCapture = PendingLookbookCapture(
+                        image: filteredImage,
+                        defaultTitle: "Scene \(Date().formatted(date: .numeric, time: .shortened))",
                         prompt: captured.prompt,
                         shotType: captured.shotType.rawValue,
                         lightPreset: lightSummary,
@@ -320,22 +351,195 @@ struct MainView: View {
                         filterName: captured.filterPreset.rawValue,
                         layoutJSON: layoutJSON
                     )
-                    modelContext.insert(entry)
-                    try modelContext.save()
-                    alertMessage = "Saved to Lookbook."
                 } catch {
-                    alertMessage = "Could not save this capture. \(error.localizedDescription)"
+                    alertMessage = "Could not prepare this capture. \(error.localizedDescription)"
                 }
             case .failure:
                 alertMessage = "Capture failed. Try scanning a surface again."
             }
         }
     }
+
+    private func savePendingCapture(
+        _ capture: PendingLookbookCapture,
+        title: String,
+        boardName: String
+    ) {
+        do {
+            let targetBoardName = boardName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedBoardName = targetBoardName.isEmpty ? LookbookBoard.defaultBoardName : targetBoardName
+
+            ensureBoardExists(named: resolvedBoardName)
+
+            let imagePath = try imageStorage.save(capture.image)
+            let entry = LookbookEntry(
+                title: title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? capture.defaultTitle : title,
+                imagePath: imagePath,
+                prompt: capture.prompt,
+                shotType: capture.shotType,
+                lightPreset: capture.lightPreset,
+                colorTemperature: capture.colorTemperature,
+                lightIntensity: capture.lightIntensity,
+                lightRadius: capture.lightRadius,
+                frameAspectRatio: capture.frameAspectRatio,
+                lensPreset: capture.lensPreset,
+                showsCompositionGuides: capture.showsCompositionGuides,
+                filterName: capture.filterName,
+                layoutJSON: capture.layoutJSON,
+                boardName: resolvedBoardName,
+                sortIndex: nextSortIndex(for: resolvedBoardName)
+            )
+            modelContext.insert(entry)
+            try modelContext.save()
+            pendingCapture = nil
+            alertMessage = "Saved to Lookbook."
+        } catch {
+            alertMessage = "Could not save this capture. \(error.localizedDescription)"
+        }
+    }
+
+    private func ensureBoardExists(named name: String) {
+        guard name != LookbookBoard.defaultBoardName,
+              name != LookbookBoard.favoritesBoardName,
+              !customBoards.contains(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) else {
+            return
+        }
+
+        modelContext.insert(LookbookBoard(name: name, sortIndex: customBoards.count + 1))
+    }
+
+    private func nextSortIndex(for boardName: String) -> Int {
+        let boardEntries = entries.filter { $0.boardName == boardName }
+        return (boardEntries.map(\.sortIndex).max() ?? -1) + 1
+    }
 }
 
 #Preview {
     MainView()
-        .modelContainer(for: LookbookEntry.self, inMemory: true)
+        .modelContainer(for: [LookbookEntry.self, LookbookBoard.self], inMemory: true)
+}
+
+private struct PendingLookbookCapture: Identifiable {
+    let id = UUID()
+    let image: UIImage
+    let defaultTitle: String
+    let prompt: String
+    let shotType: String
+    let lightPreset: String
+    let colorTemperature: String
+    let lightIntensity: Double
+    let lightRadius: Double
+    let frameAspectRatio: String
+    let lensPreset: String
+    let showsCompositionGuides: Bool
+    let filterName: String
+    let layoutJSON: String
+}
+
+private struct SaveCaptureSheet: View {
+    let capture: PendingLookbookCapture
+    let boardNames: [String]
+    let existingBoardNames: [String]
+    let onCancel: () -> Void
+    let onSave: (String, String) -> Void
+
+    @State private var title: String
+    @State private var selectedBoardName: String
+    @State private var createsNewBoard = false
+    @State private var newBoardName = ""
+
+    init(
+        capture: PendingLookbookCapture,
+        boardNames: [String],
+        existingBoardNames: [String],
+        onCancel: @escaping () -> Void,
+        onSave: @escaping (String, String) -> Void
+    ) {
+        self.capture = capture
+        self.boardNames = boardNames
+        self.existingBoardNames = existingBoardNames
+        self.onCancel = onCancel
+        self.onSave = onSave
+        _title = State(initialValue: "")
+        _selectedBoardName = State(initialValue: boardNames.first ?? LookbookBoard.defaultBoardName)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Image(uiImage: capture.image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxHeight: 220)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .frame(maxWidth: .infinity)
+                        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                }
+
+                Section {
+                    TextField(capture.defaultTitle, text: $title)
+                } header: {
+                    Text("Reference")
+                } footer: {
+                    Text("Name is optional. SceneZero will use the generated scene name when this is empty.")
+                }
+
+                Section {
+                    Picker("Save to", selection: $selectedBoardName) {
+                        ForEach(boardNames, id: \.self) { boardName in
+                            Text(boardName).tag(boardName)
+                        }
+                    }
+                    .disabled(createsNewBoard)
+
+                    Toggle("Create New Lookbook", isOn: $createsNewBoard)
+
+                    if createsNewBoard {
+                        TextField("Lookbook Name", text: $newBoardName)
+                    }
+                } header: {
+                    Text("Lookbook")
+                }
+            }
+            .navigationTitle("Save Reference")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", action: onCancel)
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(resolvedTitle, resolvedBoardName)
+                    }
+                    .disabled(!canSave)
+                }
+            }
+        }
+    }
+
+    private var resolvedTitle: String {
+        title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? capture.defaultTitle : title
+    }
+
+    private var resolvedBoardName: String {
+        if createsNewBoard {
+            return newBoardName.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return selectedBoardName
+    }
+
+    private var canSave: Bool {
+        guard createsNewBoard else {
+            return true
+        }
+
+        let candidate = newBoardName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !candidate.isEmpty && !existingBoardNames.contains {
+            $0.caseInsensitiveCompare(candidate) == .orderedSame
+        }
+    }
 }
 
 private struct ShutterButton: View {
@@ -421,6 +625,7 @@ private struct AdjustmentButtonColumn: View {
     @Binding var activeAdjustment: CaptureAdjustment?
     let maxWidth: CGFloat
     let onReset: () -> Void
+    let onDelete: () -> Void
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 8) {
@@ -451,10 +656,25 @@ private struct AdjustmentButtonColumn: View {
                     }
                     .frame(maxWidth: maxWidth, alignment: .trailing)
                 }
+
+                if controller.hasSelectedObject {
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.red)
+                            .frame(width: 44, height: 44)
+                            .liquidGlassCircle()
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Delete selected object")
+                    .frame(maxWidth: maxWidth, alignment: .trailing)
+                    .transition(.scale(scale: 0.92, anchor: .trailing).combined(with: .opacity))
+                }
             }
         }
         .frame(width: maxWidth, alignment: .bottomTrailing)
         .animation(.snappy(duration: 0.22), value: activeAdjustment)
+        .animation(.snappy(duration: 0.22), value: controller.hasSelectedObject)
     }
 
     private func handleSelection(_ adjustment: CaptureAdjustment) {

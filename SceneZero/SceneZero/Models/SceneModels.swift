@@ -157,7 +157,7 @@ enum AssetPreset: String, CaseIterable, Identifiable, Codable {
         case .prop:
             [.propBox, .chair, .table, .sofa, .desk, .bookcase, .bed, .nightStand]
         case .light:
-            [.lampStand]
+            []
         case .frame:
             []
         }
@@ -392,6 +392,10 @@ final class LookbookEntry {
     var showsCompositionGuides: Bool = true
     var filterName: String
     var layoutJSON: String
+    var boardName: String = LookbookBoard.defaultBoardName
+    var sortIndex: Int = 0
+    var isFavorite: Bool = false
+    var note: String = ""
 
     init(
         id: UUID = UUID(),
@@ -408,7 +412,11 @@ final class LookbookEntry {
         lensPreset: String = LensPreset.standard35.rawValue,
         showsCompositionGuides: Bool = true,
         filterName: String,
-        layoutJSON: String
+        layoutJSON: String,
+        boardName: String = LookbookBoard.defaultBoardName,
+        sortIndex: Int = 0,
+        isFavorite: Bool = false,
+        note: String = ""
     ) {
         self.id = id
         self.title = title
@@ -425,5 +433,35 @@ final class LookbookEntry {
         self.showsCompositionGuides = showsCompositionGuides
         self.filterName = filterName
         self.layoutJSON = layoutJSON
+        self.boardName = boardName
+        self.sortIndex = sortIndex
+        self.isFavorite = isFavorite
+        self.note = note
+    }
+}
+
+@Model
+final class LookbookBoard {
+    static let defaultBoardName = "All Captures"
+    static let favoritesBoardName = "Favorites"
+
+    @Attribute(.unique) var id: UUID
+    var name: String
+    var createdAt: Date
+    var updatedAt: Date
+    var sortIndex: Int
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date(),
+        sortIndex: Int = 0
+    ) {
+        self.id = id
+        self.name = name
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.sortIndex = sortIndex
     }
 }

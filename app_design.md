@@ -23,7 +23,7 @@ SceneZero 不直接生成最终影片，而是帮助创作者在真实空间中�
 - 使用 ARKit 平面检测与 raycast，在真实取景地中放置人物、道具、灯位等虚拟参考物。放置优先命中水平面，避免模型误贴到墙面或不稳定估计平面。
 - 在三维空间中添加虚拟影视灯光标记，例如主光、辅光、轮廓光，并通过 RealityKit 的 `SpotLight` / `PointLight` / `DirectionalLight` 影响虚拟物体。
 - 支持拖拽、旋转、缩放与删除虚拟物体，让用户可以快速搭建一个轻量级电影场景草图。
-- MVP 采用“内置轻量 `.usdz` + RealityKit primitive fallback”的资产策略。Subject 支持 `Subject Block` 与 `Human`，Prop 支持 `Prop Box / Chair / Table / Sofa / Desk / Bookcase / Bed / Night Stand`，Light 使用灯架标记。所有 bundle 模型加载失败时都会回退到程序生成的 primitives。
+- MVP 采用“内置轻量 `.usdz` + RealityKit primitive fallback”的资产策略。Subject 支持 `Subject Block` 与 `Human`，Prop 支持 `Prop Box / Chair / Table / Sofa / Desk / Bookcase / Bed / Night Stand`。Light 不使用真实灯具或灯架 3D 模型，而使用抽象 Light Marker，例如高透明球体、光环或仅用于选中/拖动的简洁记号。所有 bundle 模型加载失败时都会回退到程序生成的 primitives。
 
 **技术边界与降级方案**：
 
@@ -44,6 +44,8 @@ SceneZero 不直接生成最终影片，而是帮助创作者在真实空间中�
 
 **灯光参数设计**：
 
+- Light 是打光工具，不是场景道具。默认不应在画面中出现真实灯具、灯架或其他会被误解为美术道具的 3D 模型。
+- Light Marker 的视觉目标是“标记光源位置和可交互热点”，不是表现真实器材。第一版建议使用高透明 emissive sphere / translucent sphere、细光环、十字定位点或轻量方向 cone。Capture 保存图和 Prompt 可以记录 Light records，但应避免让灯具模型成为参考图主体。
 - 第一版不提供自由 3D 旋转球，而是提供影视常用光位预设，例如左前 45° 主光、右后轮廓光、正前方柔光、顶部俯光、低位侧光。
 - 每个光位预设在代码中映射为固定的方向向量与 `transform.rotation`，降低调参难度并避免复杂 3D 旋转交互。
 - 色温使用有限档位，例如 3200K 暖光、4500K 中性光、5600K 日光、7000K 冷光，并在内部转换为 RealityKit 灯光颜色。
@@ -86,16 +88,42 @@ Cinematic wide shot, subject standing near the left wall, warm key light from up
 **Apple 风格界面原则**：
 
 - AR 画面是第一优先级。控制界面使用轻量浮层，不应长期遮挡主体构图区域。
+- App 采用底部 Tab 栏作为一级导航，默认进入 `Capture` 拍摄界面。三个一级页面为 `Capture / Lookbook / Profile`，分别对应 AR 创作、灵感集管理和用户/项目设置。
 - 主界面不再保留大面积 `ControlPanelView`。高频参数集中在右侧 Apple Camera-style 控制列中。
 - 右侧控制列由三部分组成：中部白色圆形 Capture，下面是纵向滑动模式选择器，上面是当前模式的调节按钮。
 - 模式固定为 `Subject / Prop / Frame / Light`。其中 `Frame` 包含 `Frame / Lens / Shot / Filter`，`Light` 包含 `Direction / Color / Intensity / Spread`。
 - 点击调节按钮时，在按钮左侧展开短时内联参数胶囊；胶囊可以临时覆盖取景框线，但不会改变取景框位置。
-- 顶部状态胶囊只承担状态、Lookbook、Reset 和 Composition Guides 开关，不承担重复参数面板功能。
+- 顶部状态胶囊只承担状态、Reset 和 Composition Guides 开关，不承担重复参数面板功能；Lookbook 作为底部 Tab 独立进入。
 - 优先使用 SF Symbols、Material 背景、44pt 触控目标和圆形相机式按钮，保持 iOS 原生触感。
 
 **数据闭环**：
 
 用户在真实空间中布置虚拟场景 → 选择光位与色彩风格 → 截图保存 → 自动生成 Prompt → 将图片与文字一起作为下游 AI 视频模型的参考输入。
+
+**多界面导航方案**：
+
+SceneZero 第一版使用底部 `TabView` 组织一级页面，默认选中 `Capture`。底部栏保持 iOS 原生样式，使用 SF Symbols 和简短标签，避免自定义复杂导航。
+
+1. `Capture`
+   - 默认进入页面。
+   - 承载当前 AR 拍摄、场景摆放、Frame / Lens、灯光预览和 Capture。
+   - 页面内部继续使用右侧 Camera-style 控制列。
+   - Capture 成功后保存到 Lookbook，并用轻量状态提示确认，不强制跳转。
+
+2. `Lookbook`
+   - 灵感集与参考图管理页。
+   - 顶层展示 Boards / 灵感集，视觉上接近 Pinterest 的图板入口。
+   - 顶层包含一个 `Create Board` 占位卡片，用简洁文字提示点击即可创建灵感集，不在右上角单独放置加号按钮。
+   - 点击某个灵感集进入参考图统一平铺网格，所有 captures 使用稳定的同尺寸卡片显示，避免瀑布流错位影响浏览；网格需要按屏幕宽度计算固定列宽、左右安全边距和卡片间隙，不能贴到屏幕边缘或显示不完整。
+   - 点击单张参考图进入详情页，查看大图、Prompt、Frame / Lens、Shot、Filter、Light records、Asset presets，并支持复制 Prompt 和通过系统 Share Sheet 导出图像。
+   - 参考图详情页优先显示原始保存图，不应把裁切后的低分辨率图过度放大；新 Capture 使用无损 PNG 保存，减少 Lookbook 二次压缩造成的模糊。
+   - Lookbook 内部页面使用自定义纯 `chevron.left` 回退按钮，不显示系统默认蓝色上一页标题。
+   - 默认内置 `All Captures` 和 `Favorites`，后续支持用户创建自定义灵感集。
+
+3. `Profile`
+   - 用户界面，第一版先保持轻量。
+   - 用于展示用户信息、项目统计、默认偏好、导出入口或关于信息。
+   - 不在第一版承担复杂账号系统、云同步或社交功能。
 
 **Prompt 生成机制**：
 
@@ -146,7 +174,7 @@ SceneZero 做的是“真实场景中的视觉参考采集器”。它把导演�
 - 在 SwiftUI 中加载 `ARView`。
 - 跑通平面检测与 raycast 放置虚拟几何体。
 - 建立内置轻量 `.usdz` 资产链路，并保留 RealityKit primitives 作为 fallback。
-- 支持 Subject 与 Prop 的 asset preset 选择，当前内置人物、椅子、桌子、沙发、书桌、书架、床、床头柜和灯架等模型。
+- 支持 Subject 与 Prop 的 asset preset 选择，当前内置人物、椅子、桌子、沙发、书桌、书架、床、床头柜等模型。Light 使用抽象光位标记，不进入真实家具/灯具资产选择。
 - 将 Camera 改为 Frame / Lens 构图工具，提供稳定 Frame Line、Composition Guides、镜头语言和 Shot Type 可视化反馈。
 - 添加基础灯光标记与参数面板，例如光源类型、强度、色温档位和预设光位方向。
 - 按 Apple 风格优化主界面：右侧相机式控制列、顶部状态胶囊、轻量内联参数胶囊、稳定取景框。

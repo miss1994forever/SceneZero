@@ -11,6 +11,7 @@ final class ARSceneController: ObservableObject {
                   let selected = placedObjects.first(where: { $0.id == selectedObjectID }),
                   selected.tool != selectedTool else { return }
             self.selectedObjectID = nil
+            self.hasSelectedObject = false
         }
     }
     @Published var lightPreset: LightPreset = .keyLeft {
@@ -40,12 +41,14 @@ final class ARSceneController: ObservableObject {
     @Published var locationDescription = "realistic interior location"
     @Published var statusText = "Move your device to find a surface"
     @Published var isCapturing = false
+    @Published private(set) var hasSelectedObject = false
 
+    private var usesRealityKitModelLighting = false
     private weak var arView: ARView?
     private var hasSubjectAnchor = false
     private var layoutOriginPosition: SIMD3<Float>?
     private var records: [SceneObjectRecord] = []
-    private var spotLights: [SpotLight] = []
+    private var spotLights: [UUID: SpotLight] = [:]
     private var placedObjects: [PlacedObject] = []
     private var selectedObjectID: UUID?
     private var isUpdatingObjectScaleFromSelection = false
@@ -54,6 +57,20 @@ final class ARSceneController: ObservableObject {
         guard self.arView !== arView else { return }
         self.arView = arView
         configureSession(on: arView)
+    }
+
+    func setRealityKitModelLightingEnabled(_ isEnabled: Bool) {
+        guard usesRealityKitModelLighting != isEnabled else { return }
+        usesRealityKitModelLighting = isEnabled
+
+        if isEnabled {
+            addSpotLightsForPlacedLightMarkers()
+            updatePlacedLights()
+            statusText = "3D model lighting enabled"
+        } else {
+            removeAllSpotLights()
+            statusText = "3D model lighting disabled"
+        }
     }
 
     func handleTap(at point: CGPoint, in arView: ARView) {
@@ -135,11 +152,33 @@ final class ARSceneController: ObservableObject {
         records.removeAll()
         placedObjects.removeAll()
         selectedObjectID = nil
+        hasSelectedObject = false
         hasSubjectAnchor = false
         layoutOriginPosition = nil
         hasLightingOverlay = false
         spotLights.removeAll()
         statusText = "Scene cleared"
+    }
+
+    func deleteSelectedObject() {
+        guard let selectedObjectID,
+              let placedIndex = placedObjects.firstIndex(where: { $0.id == selectedObjectID }) else {
+            statusText = "Select an object first"
+            return
+        }
+
+        let placedObject = placedObjects.remove(at: placedIndex)
+        placedObject.entity.removeFromParent()
+        spotLights[selectedObjectID]?.removeFromParent()
+        spotLights[selectedObjectID] = nil
+        records.removeAll { $0.id == selectedObjectID }
+
+        self.selectedObjectID = nil
+        hasSelectedObject = false
+        hasSubjectAnchor = records.contains { $0.type == .subject }
+        refreshLightingOverlayState()
+
+        statusText = "\(placedObject.tool.rawValue) removed"
     }
 
     func resetSelectedObjectScale() {
@@ -223,9 +262,11 @@ final class ARSceneController: ObservableObject {
         }
         anchor.addChild(entity)
 
+        var light: SpotLight?
         if tool == .light {
-            addLightMarker(to: anchor, scale: scale)
-            addRealityKitLight(to: anchor, scale: scale)
+            if usesRealityKitModelLighting {
+                light = addRealityKitLight(to: entity)
+            }
             hasLightingOverlay = true
         }
 
@@ -242,9 +283,12 @@ final class ARSceneController: ObservableObject {
 
         arView.scene.addAnchor(anchor)
         installDirectManipulationGesturesIfNeeded(for: entity, tool: tool, in: arView)
-        addShadowReceiver(near: worldPosition, scale: scale, in: arView)
         let record = record(for: tool, assetPreset: assetPreset, worldPosition: worldPosition, scale: scale)
         records.append(record)
+        refreshLightingOverlayState()
+        if let light {
+            spotLights[record.id] = light
+        }
         placedObjects.append(PlacedObject(
             id: record.id,
             tool: tool,
@@ -284,7 +328,7 @@ final class ARSceneController: ObservableObject {
         case .frame:
             return nil
         case .light:
-            return makeLampStand(scale: scale)
+            return makeLightMarker(scale: scale)
         }
     }
 
@@ -632,42 +676,18 @@ final class ARSceneController: ObservableObject {
         return root
     }
 
-    private func makeLampStand(scale: Float) -> ModelEntity {
-        let lampColor = colorTemperature.uiColor.withAlphaComponent(0.92)
-        let metalColor = UIColor.systemGray2.withAlphaComponent(0.86)
+    private func makeLightMarker(scale: Float) -> ModelEntity {
+        var markerMaterial = UnlitMaterial()
+        markerMaterial.color = .init(tint: colorTemperature.uiColor.withAlphaComponent(1.0))
         let root = ModelEntity(
-            mesh: MeshResource.generateSphere(radius: 0.13 * scale),
-            materials: [SimpleMaterial(color: lampColor, isMetallic: false)]
+            mesh: MeshResource.generateSphere(radius: 0.105 * scale),
+            materials: [markerMaterial]
         )
-        root.position.y = 1.35 * scale
+        root.position.y = 0.42 * scale
 
-        let yOffsetToGround = -1.35 * scale
-        let pole = makeBox(
-            width: 0.035 * scale,
-            height: 1.08 * scale,
-            depth: 0.035 * scale,
-            color: metalColor
-        )
-        pole.position = SIMD3<Float>(0, yOffsetToGround + 0.64 * scale, 0)
-        root.addChild(pole)
-
-        let base = makeBox(
-            width: 0.36 * scale,
-            height: 0.035 * scale,
-            depth: 0.36 * scale,
-            color: metalColor.withAlphaComponent(0.7)
-        )
-        base.position = SIMD3<Float>(0, yOffsetToGround + 0.03 * scale, 0)
-        root.addChild(base)
-
-        let yoke = makeBox(
-            width: 0.28 * scale,
-            height: 0.04 * scale,
-            depth: 0.04 * scale,
-            color: metalColor
-        )
-        yoke.position = SIMD3<Float>(0, -0.13 * scale, 0)
-        root.addChild(yoke)
+        root.collision = CollisionComponent(shapes: [
+            ShapeResource.generateSphere(radius: 0.16 * scale)
+        ])
 
         return root
     }
@@ -720,34 +740,44 @@ final class ARSceneController: ObservableObject {
         return ModelEntity(mesh: mesh, materials: [material])
     }
 
-    private func addLightMarker(to anchor: AnchorEntity, scale: Float) {
-        let mesh = MeshResource.generateBox(width: 0.05 * scale, height: 0.05 * scale, depth: 0.65 * scale)
-        let material = SimpleMaterial(color: UIColor.systemYellow.withAlphaComponent(0.45), isMetallic: false)
-        let beam = ModelEntity(mesh: mesh, materials: [material])
-        beam.position = SIMD3<Float>(0, 1.25 * scale, -0.35 * scale)
-        beam.orientation = lightPreset.lightRotation
-        anchor.addChild(beam)
+    private func addRealityKitLight(to parent: Entity) -> SpotLight {
+        let light = SpotLight()
+        light.position = .zero
+        update(light)
+        parent.addChild(light)
+        return light
     }
 
-    private func addRealityKitLight(to anchor: AnchorEntity, scale: Float) {
-        let light = SpotLight()
-        light.position = SIMD3<Float>(0, 1.35 * scale, 0)
+    private func update(_ light: SpotLight) {
         light.orientation = lightPreset.lightRotation
         light.light.color = colorTemperature.uiColor
-        light.light.intensity = Float(2_500 + lightIntensity * 12_000)
+        light.light.intensity = Float(400 + lightIntensity * 3_600)
         light.light.innerAngleInDegrees = 18
         light.light.outerAngleInDegrees = Float(38 + lightRadius * 34)
-        anchor.addChild(light)
-        spotLights.append(light)
     }
 
     private func updatePlacedLights() {
-        for light in spotLights {
-            light.orientation = lightPreset.lightRotation
-            light.light.color = colorTemperature.uiColor
-            light.light.intensity = Float(2_500 + lightIntensity * 12_000)
-            light.light.outerAngleInDegrees = Float(38 + lightRadius * 34)
+        for light in spotLights.values {
+            update(light)
         }
+    }
+
+    private func addSpotLightsForPlacedLightMarkers() {
+        for placedObject in placedObjects where placedObject.tool == .light {
+            guard spotLights[placedObject.id] == nil else { continue }
+            spotLights[placedObject.id] = addRealityKitLight(to: placedObject.entity)
+        }
+    }
+
+    private func removeAllSpotLights() {
+        for light in spotLights.values {
+            light.removeFromParent()
+        }
+        spotLights.removeAll()
+    }
+
+    private func refreshLightingOverlayState() {
+        hasLightingOverlay = records.contains { $0.type == .light }
     }
 
     private func updateActiveObjectScale() {
@@ -765,16 +795,6 @@ final class ARSceneController: ObservableObject {
         statusText = "\(selectedTool.rawValue) size \(Int(objectScale * 100))%"
     }
 
-    private func addShadowReceiver(near position: SIMD3<Float>, scale: Float, in arView: ARView) {
-        let anchor = AnchorEntity(world: position)
-        let receiverSize = max(0.8, 1.2 * scale)
-        let mesh = MeshResource.generatePlane(width: receiverSize, depth: receiverSize)
-        let material = SimpleMaterial(color: UIColor.black.withAlphaComponent(0.08), isMetallic: false)
-        let plane = ModelEntity(mesh: mesh, materials: [material])
-        anchor.addChild(plane)
-        arView.scene.addAnchor(anchor)
-    }
-
     private func baseHeightOffset(for tool: SceneTool, scale: Float) -> Float {
         switch tool {
         case .subject:
@@ -784,7 +804,7 @@ final class ARSceneController: ObservableObject {
         case .frame:
             0
         case .light:
-            1.35 * scale
+            0.42 * scale
         }
     }
 
@@ -818,15 +838,15 @@ final class ARSceneController: ObservableObject {
         case .nightStand:
             0.25 * scale
         case .lampStand:
-            1.35 * scale
+            0.42 * scale
         }
     }
 
     private func currentAssetPreset(for tool: SceneTool) -> AssetPreset? {
         switch tool {
-        case .subject, .prop, .light:
+        case .subject, .prop:
             assetPreset(for: tool)
-        case .frame:
+        case .light, .frame:
             nil
         }
     }
@@ -855,7 +875,7 @@ final class ARSceneController: ObservableObject {
     }
 
     private func installDirectManipulationGesturesIfNeeded(for entity: ModelEntity, tool: SceneTool, in arView: ARView) {
-        guard tool == .subject || tool == .prop else { return }
+        guard tool == .subject || tool == .prop || tool == .light else { return }
         arView.installGestures([.translation, .rotation, .scale], for: entity)
     }
 
@@ -872,6 +892,7 @@ final class ARSceneController: ObservableObject {
         guard let placedObject = placedObjects.first(where: { $0.id == id }) else { return }
 
         selectedObjectID = id
+        hasSelectedObject = true
         selectedTool = placedObject.tool
         syncRecord(for: placedObject)
 
