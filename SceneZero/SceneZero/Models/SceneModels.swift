@@ -43,6 +43,10 @@ enum AssetPreset: String, CaseIterable, Identifiable, Codable {
     case chair = "Chair"
     case table = "Table"
     case sofa = "Sofa"
+    case desk = "Desk"
+    case bookcase = "Bookcase"
+    case bed = "Bed"
+    case nightStand = "Night Stand"
     case lampStand = "Lamp Stand"
 
     var id: String { rawValue }
@@ -51,7 +55,7 @@ enum AssetPreset: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .subjectBlock, .human:
             .subject
-        case .propBox, .chair, .table, .sofa:
+        case .propBox, .chair, .table, .sofa, .desk, .bookcase, .bed, .nightStand:
             .prop
         case .lampStand:
             .lightMarker
@@ -70,6 +74,14 @@ enum AssetPreset: String, CaseIterable, Identifiable, Codable {
             "Table"
         case .sofa:
             "Sofa"
+        case .desk:
+            "Desk"
+        case .bookcase:
+            "Bookcase"
+        case .bed:
+            "Bed"
+        case .nightStand:
+            "NightStand"
         case .lampStand:
             "LampStand"
         }
@@ -82,11 +94,19 @@ enum AssetPreset: String, CaseIterable, Identifiable, Codable {
         case .propBox:
             0.75
         case .chair:
-            0.65
+            0.95
         case .table:
-            0.8
+            0.95
         case .sofa:
-            0.7
+            0.9
+        case .desk:
+            0.9
+        case .bookcase:
+            0.75
+        case .bed:
+            0.85
+        case .nightStand:
+            0.85
         case .lampStand:
             0.75
         }
@@ -96,7 +116,7 @@ enum AssetPreset: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .subjectBlock, .human:
             .verticalBox
-        case .propBox, .chair, .table, .sofa:
+        case .propBox, .chair, .table, .sofa, .desk, .bookcase, .bed, .nightStand:
             .box
         case .lampStand:
             .sphere
@@ -117,6 +137,14 @@ enum AssetPreset: String, CaseIterable, Identifiable, Codable {
             "table.furniture"
         case .sofa:
             "sofa"
+        case .desk:
+            "studentdesk"
+        case .bookcase:
+            "books.vertical"
+        case .bed:
+            "bed.double"
+        case .nightStand:
+            "cabinet"
         case .lampStand:
             "lightbulb"
         }
@@ -127,7 +155,7 @@ enum AssetPreset: String, CaseIterable, Identifiable, Codable {
         case .subject:
             [.subjectBlock, .human]
         case .prop:
-            [.propBox, .chair, .table, .sofa]
+            [.propBox, .chair, .table, .sofa, .desk, .bookcase, .bed, .nightStand]
         case .light:
             [.lampStand]
         case .frame:

@@ -66,9 +66,9 @@ final class ARSceneController: ObservableObject {
             return
         }
 
-        let results = arView.raycast(from: point, allowing: .estimatedPlane, alignment: .any)
+        let results = arView.raycast(from: point, allowing: .estimatedPlane, alignment: .horizontal)
         guard let result = results.first else {
-            statusText = "No surface found yet"
+            statusText = "Find a horizontal surface"
             return
         }
 
@@ -218,7 +218,9 @@ final class ARSceneController: ObservableObject {
         let scale = Float(objectScale)
         let assetPreset = currentAssetPreset(for: tool)
         guard let entity = makeEntity(for: tool, assetPreset: assetPreset, scale: scale) else { return }
-        entity.generateCollisionShapes(recursive: true)
+        if entity.components[CollisionComponent.self] == nil {
+            entity.generateCollisionShapes(recursive: true)
+        }
         anchor.addChild(entity)
 
         if tool == .light {
@@ -274,17 +276,15 @@ final class ARSceneController: ObservableObject {
                 return makeTable(scale: scale)
             case .sofa:
                 return makeSofa(scale: scale)
+            case .desk, .bookcase, .bed, .nightStand:
+                return makePropBox(scale: scale)
             default:
                 return makePropBox(scale: scale)
             }
         case .frame:
             return nil
         case .light:
-            let mesh = MeshResource.generateSphere(radius: 0.12 * scale)
-            let material = SimpleMaterial(color: colorTemperature.uiColor, isMetallic: false)
-            let entity = ModelEntity(mesh: mesh, materials: [material])
-            entity.position.y = 1.35 * scale
-            return entity
+            return makeLampStand(scale: scale)
         }
     }
 
@@ -296,9 +296,23 @@ final class ARSceneController: ObservableObject {
         do {
             let model = try Entity.load(contentsOf: modelURL)
             let proxy = collisionProxyEntity(for: assetPreset, scale: scale)
-            model.scale = SIMD3<Float>(repeating: scale)
-            alignBundledModelToGround(model, assetPreset: assetPreset, scale: scale)
+            let unscaledBounds = model.visualBounds(relativeTo: model)
+            let modelScale = normalizedModelScale(
+                for: unscaledBounds,
+                assetPreset: assetPreset,
+                scale: scale
+            )
+            model.scale = SIMD3<Float>(repeating: modelScale)
+            alignBundledModelToGround(
+                model,
+                bounds: unscaledBounds,
+                assetPreset: assetPreset,
+                scale: scale,
+                modelScale: modelScale
+            )
+            proxy.model = nil
             proxy.addChild(model)
+            configureCollisionProxy(proxy, for: model, assetPreset: assetPreset, scale: scale)
             proxy.position.y = baseHeightOffset(for: assetPreset, scale: scale)
             return proxy
         } catch {
@@ -318,10 +332,35 @@ final class ARSceneController: ObservableObject {
         return Bundle.main.url(forResource: modelName, withExtension: "usdz")
     }
 
-    private func alignBundledModelToGround(_ model: Entity, assetPreset: AssetPreset, scale: Float) {
-        let bounds = model.visualBounds(relativeTo: model)
+    private func normalizedModelScale(
+        for bounds: BoundingBox,
+        assetPreset: AssetPreset,
+        scale: Float
+    ) -> Float {
+        let dimensions = bounds.max - bounds.min
+        let targetSize = proxySize(for: assetPreset, scale: scale) * 0.9
+        let validRatios = [
+            dimensions.x > 0 ? targetSize.x / dimensions.x : nil,
+            dimensions.y > 0 ? targetSize.y / dimensions.y : nil,
+            dimensions.z > 0 ? targetSize.z / dimensions.z : nil
+        ].compactMap { $0 }
+
+        guard let ratio = validRatios.min(), ratio.isFinite, ratio > 0 else {
+            return scale
+        }
+
+        return ratio
+    }
+
+    private func alignBundledModelToGround(
+        _ model: Entity,
+        bounds: BoundingBox,
+        assetPreset: AssetPreset,
+        scale: Float,
+        modelScale: Float
+    ) {
         let localGroundY = -baseHeightOffset(for: assetPreset, scale: scale)
-        model.position.y = localGroundY - bounds.min.y * scale
+        model.position.y = localGroundY - bounds.min.y * modelScale
     }
 
     private func collisionProxyEntity(for assetPreset: AssetPreset, scale: Float) -> ModelEntity {
@@ -329,6 +368,27 @@ final class ARSceneController: ObservableObject {
         let mesh = MeshResource.generateBox(width: size.x, height: size.y, depth: size.z)
         let material = SimpleMaterial(color: UIColor.white.withAlphaComponent(0.001), isMetallic: false)
         return ModelEntity(mesh: mesh, materials: [material])
+    }
+
+    private func configureCollisionProxy(
+        _ proxy: ModelEntity,
+        for model: Entity,
+        assetPreset: AssetPreset,
+        scale: Float
+    ) {
+        let bounds = model.visualBounds(relativeTo: proxy)
+        let dimensions = bounds.max - bounds.min
+        let minimumSize = proxySize(for: assetPreset, scale: scale) * 0.35
+        let paddedSize = SIMD3<Float>(
+            max(minimumSize.x, dimensions.x * 0.92),
+            max(minimumSize.y, dimensions.y * 0.92),
+            max(minimumSize.z, dimensions.z * 0.92)
+        )
+        let center = (bounds.min + bounds.max) / 2
+
+        proxy.collision = CollisionComponent(shapes: [
+            ShapeResource.generateBox(size: paddedSize).offsetBy(translation: center)
+        ])
     }
 
     private func proxySize(for assetPreset: AssetPreset, scale: Float) -> SIMD3<Float> {
@@ -345,6 +405,14 @@ final class ARSceneController: ObservableObject {
             SIMD3<Float>(0.88 * scale, 0.76 * scale, 0.58 * scale)
         case .sofa:
             SIMD3<Float>(1.15 * scale, 0.75 * scale, 0.55 * scale)
+        case .desk:
+            SIMD3<Float>(1.15 * scale, 0.72 * scale, 0.55 * scale)
+        case .bookcase:
+            SIMD3<Float>(0.85 * scale, 1.55 * scale, 0.35 * scale)
+        case .bed:
+            SIMD3<Float>(1.35 * scale, 0.55 * scale, 1.8 * scale)
+        case .nightStand:
+            SIMD3<Float>(0.48 * scale, 0.50 * scale, 0.48 * scale)
         case .lampStand:
             SIMD3<Float>(0.24 * scale, 1.45 * scale, 0.24 * scale)
         }
@@ -358,7 +426,7 @@ final class ARSceneController: ObservableObject {
             width: width,
             height: height,
             depth: depth,
-            color: UIColor.systemBlue.withAlphaComponent(0.72)
+            color: UIColor(red: 0.10, green: 0.36, blue: 0.74, alpha: 1.0)
         )
         entity.position.y = height / 2
         return entity
@@ -407,68 +475,199 @@ final class ARSceneController: ObservableObject {
     }
 
     private func makeChair(scale: Float) -> ModelEntity {
+        let frameColor = UIColor(red: 0.52, green: 0.39, blue: 0.27, alpha: 0.96)
+        let cushionColor = UIColor(red: 0.84, green: 0.88, blue: 0.90, alpha: 0.96)
+        let accentColor = UIColor(red: 0.37, green: 0.50, blue: 0.58, alpha: 0.95)
         let root = makeBox(
-            width: 0.46 * scale,
-            height: 0.10 * scale,
-            depth: 0.46 * scale,
-            color: UIColor.systemGray3.withAlphaComponent(0.86)
+            width: 0.50 * scale,
+            height: 0.08 * scale,
+            depth: 0.48 * scale,
+            color: frameColor
         )
         root.position.y = 0.45 * scale
 
-        let back = makeBox(
+        let cushion = makeBox(
             width: 0.46 * scale,
-            height: 0.62 * scale,
-            depth: 0.08 * scale,
-            color: UIColor.systemGray2.withAlphaComponent(0.82)
+            height: 0.08 * scale,
+            depth: 0.42 * scale,
+            color: cushionColor
         )
-        back.position = SIMD3<Float>(0, 0.30 * scale, 0.19 * scale)
+        cushion.position = SIMD3<Float>(0, 0.06 * scale, -0.02 * scale)
+        root.addChild(cushion)
+
+        let back = makeBox(
+            width: 0.50 * scale,
+            height: 0.10 * scale,
+            depth: 0.06 * scale,
+            color: frameColor
+        )
+        back.position = SIMD3<Float>(0, 0.56 * scale, 0.21 * scale)
         root.addChild(back)
 
-        addLegs(to: root, scale: scale, x: 0.17, z: 0.17, height: 0.40, color: UIColor.systemGray)
+        let backPanel = makeBox(
+            width: 0.42 * scale,
+            height: 0.42 * scale,
+            depth: 0.055 * scale,
+            color: accentColor
+        )
+        backPanel.position = SIMD3<Float>(0, 0.34 * scale, 0.21 * scale)
+        root.addChild(backPanel)
+
+        for xOffset in [-0.18 * scale, 0.18 * scale] {
+            let upright = makeBox(
+                width: 0.055 * scale,
+                height: 0.58 * scale,
+                depth: 0.055 * scale,
+                color: frameColor
+            )
+            upright.position = SIMD3<Float>(xOffset, 0.28 * scale, 0.21 * scale)
+            root.addChild(upright)
+        }
+
+        addLegs(to: root, scale: scale, x: 0.18, z: 0.16, height: 0.42, color: frameColor)
+        addCrossbar(to: root, scale: scale, x: 0, y: -0.26, z: 0.18, width: 0.44, depth: 0.035, color: frameColor)
         return root
     }
 
     private func makeTable(scale: Float) -> ModelEntity {
+        let woodColor = UIColor(red: 0.56, green: 0.37, blue: 0.22, alpha: 0.96)
+        let topColor = UIColor(red: 0.66, green: 0.47, blue: 0.31, alpha: 0.96)
+        let darkWoodColor = UIColor(red: 0.38, green: 0.25, blue: 0.16, alpha: 0.94)
         let root = makeBox(
-            width: 0.85 * scale,
+            width: 0.92 * scale,
             height: 0.08 * scale,
-            depth: 0.56 * scale,
-            color: UIColor.systemBrown.withAlphaComponent(0.82)
+            depth: 0.60 * scale,
+            color: topColor
         )
         root.position.y = 0.72 * scale
 
-        addLegs(to: root, scale: scale, x: 0.34, z: 0.20, height: 0.68, color: UIColor.systemBrown)
+        let topInset = makeBox(
+            width: 0.78 * scale,
+            height: 0.025 * scale,
+            depth: 0.46 * scale,
+            color: UIColor(red: 0.74, green: 0.56, blue: 0.39, alpha: 0.96)
+        )
+        topInset.position = SIMD3<Float>(0, 0.055 * scale, 0)
+        root.addChild(topInset)
+
+        let apronFront = makeBox(width: 0.86 * scale, height: 0.08 * scale, depth: 0.035 * scale, color: darkWoodColor)
+        apronFront.position = SIMD3<Float>(0, -0.08 * scale, -0.28 * scale)
+        root.addChild(apronFront)
+
+        let apronBack = makeBox(width: 0.86 * scale, height: 0.08 * scale, depth: 0.035 * scale, color: darkWoodColor)
+        apronBack.position = SIMD3<Float>(0, -0.08 * scale, 0.28 * scale)
+        root.addChild(apronBack)
+
+        addLegs(to: root, scale: scale, x: 0.36, z: 0.22, height: 0.68, color: woodColor)
+        addCrossbar(to: root, scale: scale, x: 0, y: -0.42, z: 0.22, width: 0.76, depth: 0.035, color: darkWoodColor)
         return root
     }
 
     private func makeSofa(scale: Float) -> ModelEntity {
+        let baseColor = UIColor(red: 0.18, green: 0.48, blue: 0.54, alpha: 0.94)
+        let cushionColor = UIColor(red: 0.34, green: 0.70, blue: 0.73, alpha: 0.95)
+        let pillowColor = UIColor(red: 0.94, green: 0.74, blue: 0.48, alpha: 0.96)
         let root = makeBox(
-            width: 1.05 * scale,
-            height: 0.26 * scale,
-            depth: 0.45 * scale,
-            color: UIColor.systemTeal.withAlphaComponent(0.72)
+            width: 1.16 * scale,
+            height: 0.22 * scale,
+            depth: 0.50 * scale,
+            color: baseColor
         )
-        root.position.y = 0.27 * scale
+        root.position.y = 0.28 * scale
+
+        for xOffset in [-0.30 * scale, 0.30 * scale] {
+            let seat = makeBox(
+                width: 0.52 * scale,
+                height: 0.12 * scale,
+                depth: 0.43 * scale,
+                color: cushionColor
+            )
+            seat.position = SIMD3<Float>(xOffset, 0.13 * scale, -0.03 * scale)
+            root.addChild(seat)
+        }
 
         let back = makeBox(
-            width: 1.05 * scale,
-            height: 0.48 * scale,
-            depth: 0.10 * scale,
-            color: UIColor.systemTeal.withAlphaComponent(0.62)
+            width: 1.16 * scale,
+            height: 0.50 * scale,
+            depth: 0.11 * scale,
+            color: baseColor.withAlphaComponent(0.96)
         )
         back.position = SIMD3<Float>(0, 0.25 * scale, 0.22 * scale)
         root.addChild(back)
 
-        for xOffset in [-0.57 * scale, 0.57 * scale] {
-            let arm = makeBox(
-                width: 0.10 * scale,
-                height: 0.36 * scale,
-                depth: 0.48 * scale,
-                color: UIColor.systemTeal.withAlphaComponent(0.66)
+        for xOffset in [-0.30 * scale, 0.30 * scale] {
+            let backCushion = makeBox(
+                width: 0.48 * scale,
+                height: 0.35 * scale,
+                depth: 0.075 * scale,
+                color: cushionColor.withAlphaComponent(0.92)
             )
-            arm.position = SIMD3<Float>(xOffset, 0.08 * scale, 0)
+            backCushion.position = SIMD3<Float>(xOffset, 0.28 * scale, 0.15 * scale)
+            root.addChild(backCushion)
+        }
+
+        for xOffset in [-0.63 * scale, 0.63 * scale] {
+            let arm = makeBox(
+                width: 0.12 * scale,
+                height: 0.40 * scale,
+                depth: 0.52 * scale,
+                color: baseColor.withAlphaComponent(0.96)
+            )
+            arm.position = SIMD3<Float>(xOffset, 0.10 * scale, 0)
             root.addChild(arm)
         }
+
+        for xOffset in [-0.43 * scale, 0.43 * scale] {
+            let pillow = makeBox(
+                width: 0.18 * scale,
+                height: 0.18 * scale,
+                depth: 0.08 * scale,
+                color: pillowColor
+            )
+            pillow.position = SIMD3<Float>(xOffset, 0.30 * scale, -0.12 * scale)
+            root.addChild(pillow)
+        }
+
+        addLegs(to: root, scale: scale, x: 0.42, z: 0.18, height: 0.16, color: UIColor.darkGray.withAlphaComponent(0.78))
+        return root
+    }
+
+    private func makeLampStand(scale: Float) -> ModelEntity {
+        let lampColor = colorTemperature.uiColor.withAlphaComponent(0.92)
+        let metalColor = UIColor.systemGray2.withAlphaComponent(0.86)
+        let root = ModelEntity(
+            mesh: MeshResource.generateSphere(radius: 0.13 * scale),
+            materials: [SimpleMaterial(color: lampColor, isMetallic: false)]
+        )
+        root.position.y = 1.35 * scale
+
+        let yOffsetToGround = -1.35 * scale
+        let pole = makeBox(
+            width: 0.035 * scale,
+            height: 1.08 * scale,
+            depth: 0.035 * scale,
+            color: metalColor
+        )
+        pole.position = SIMD3<Float>(0, yOffsetToGround + 0.64 * scale, 0)
+        root.addChild(pole)
+
+        let base = makeBox(
+            width: 0.36 * scale,
+            height: 0.035 * scale,
+            depth: 0.36 * scale,
+            color: metalColor.withAlphaComponent(0.7)
+        )
+        base.position = SIMD3<Float>(0, yOffsetToGround + 0.03 * scale, 0)
+        root.addChild(base)
+
+        let yoke = makeBox(
+            width: 0.28 * scale,
+            height: 0.04 * scale,
+            depth: 0.04 * scale,
+            color: metalColor
+        )
+        yoke.position = SIMD3<Float>(0, -0.13 * scale, 0)
+        root.addChild(yoke)
 
         return root
     }
@@ -493,6 +692,26 @@ final class ARSceneController: ObservableObject {
                 root.addChild(leg)
             }
         }
+    }
+
+    private func addCrossbar(
+        to root: ModelEntity,
+        scale: Float,
+        x: Float,
+        y: Float,
+        z: Float,
+        width: Float,
+        depth: Float,
+        color: UIColor
+    ) {
+        let bar = makeBox(
+            width: width * scale,
+            height: 0.035 * scale,
+            depth: depth * scale,
+            color: color.withAlphaComponent(0.9)
+        )
+        bar.position = SIMD3<Float>(x * scale, y * scale, z * scale)
+        root.addChild(bar)
     }
 
     private func makeBox(width: Float, height: Float, depth: Float, color: UIColor) -> ModelEntity {
@@ -590,6 +809,14 @@ final class ARSceneController: ObservableObject {
             0.72 * scale
         case .sofa:
             0.27 * scale
+        case .desk:
+            0.72 * scale
+        case .bookcase:
+            0.78 * scale
+        case .bed:
+            0.28 * scale
+        case .nightStand:
+            0.25 * scale
         case .lampStand:
             1.35 * scale
         }
@@ -633,7 +860,7 @@ final class ARSceneController: ObservableObject {
     }
 
     private func selectPlacedObject(containing entity: Entity) -> Bool {
-        guard let placedObject = placedObjects.first(where: { isEntity(entity, containedIn: $0.entity) }) else {
+        guard let placedObject = placedObjects.reversed().first(where: { isEntity(entity, containedIn: $0.entity) }) else {
             return false
         }
 
