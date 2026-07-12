@@ -39,6 +39,20 @@ struct ImageStorageService {
         try? FileManager.default.removeItem(at: url)
     }
 
+    func deleteOrphans(keeping relativePaths: Set<String>) throws {
+        let directory = try imageDirectory()
+        let files = try FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        )
+        for file in files {
+            let relativePath = "\(folderName)/\(file.lastPathComponent)"
+            if !relativePaths.contains(relativePath) {
+                try? FileManager.default.removeItem(at: file)
+            }
+        }
+    }
+
     private func imageDirectory() throws -> URL {
         let directory = try baseDirectory().appendingPathComponent(folderName, isDirectory: true)
         if !FileManager.default.fileExists(atPath: directory.path) {

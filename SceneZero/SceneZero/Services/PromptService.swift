@@ -1,5 +1,23 @@
 import Foundation
 
+enum VideoPromptPlatform: String, CaseIterable, Identifiable {
+    case generic
+    case sora
+    case runway
+    case kling
+
+    var id: Self { self }
+
+    var displayName: String {
+        switch self {
+        case .generic: "通用格式"
+        case .sora: "Sora"
+        case .runway: "Runway"
+        case .kling: "可灵"
+        }
+    }
+}
+
 struct StructuredPrompt {
     let base: String
     let atmosphere: String
@@ -142,6 +160,37 @@ struct PromptService {
             locationDescription: entry.title,
             userNote: entry.note
         )
+    }
+
+    static func adaptedPrompt(from entry: LookbookEntry, for platform: VideoPromptPlatform) -> String {
+        let structured = structuredPrompt(from: entry)
+        let core = [structured.base, structured.atmosphere, structured.shotMetadata, structured.keepElements]
+            .joined(separator: " ")
+
+        switch platform {
+        case .generic:
+            return structured.fullText
+        case .sora:
+            return """
+            Scene: \(structured.base)
+            Cinematography: \(structured.shotMetadata)
+            Mood and visual style: \(structured.atmosphere)
+            Preserve: \(structured.keepElements)
+            """
+        case .runway:
+            return """
+            \(core)
+
+            Camera direction: keep the established framing, lens language, spatial depth, and lighting direction. Avoid changing the relative positions of marked subjects and props.
+            """
+        case .kling:
+            return """
+            主体与场景：\(structured.base)
+            镜头与空间：\(structured.shotMetadata)
+            氛围与风格：\(structured.atmosphere)
+            必须保留：\(structured.keepElements)
+            """
+        }
     }
 
     static func layoutRecords(from entry: LookbookEntry) -> [SceneObjectRecord] {

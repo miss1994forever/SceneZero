@@ -462,6 +462,11 @@ final class LookbookEntry {
     var sortIndex: Int = 0
     var isFavorite: Bool = false
     var note: String = ""
+    var projectID: UUID?
+    var tagsText: String = ""
+    var locationName: String = "真实现场空间"
+    @Relationship(deleteRule: .cascade, inverse: \InspirationAsset.entry)
+    var assets: [InspirationAsset] = []
 
     init(
         id: UUID = UUID(),
@@ -482,7 +487,10 @@ final class LookbookEntry {
         boardName: String = LookbookBoard.defaultBoardName,
         sortIndex: Int = 0,
         isFavorite: Bool = false,
-        note: String = ""
+        note: String = "",
+        projectID: UUID? = nil,
+        tagsText: String = "",
+        locationName: String = "真实现场空间"
     ) {
         self.id = id
         self.title = title
@@ -503,6 +511,123 @@ final class LookbookEntry {
         self.sortIndex = sortIndex
         self.isFavorite = isFavorite
         self.note = note
+        self.projectID = projectID
+        self.tagsText = tagsText
+        self.locationName = locationName
+    }
+}
+
+enum InspirationAssetKind: String, CaseIterable, Codable {
+    case image
+    case text
+    case audio
+    case video
+    case music
+
+    var displayName: String {
+        switch self {
+        case .image: "照片"
+        case .text: "文字"
+        case .audio: "声音"
+        case .video: "视频"
+        case .music: "音乐"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .image: "photo"
+        case .text: "text.quote"
+        case .audio: "waveform"
+        case .video: "video"
+        case .music: "music.note"
+        }
+    }
+}
+
+@Model
+final class InspirationAsset {
+    @Attribute(.unique) var id: UUID
+    var kindRawValue: String = InspirationAssetKind.image.rawValue
+    var createdAt: Date = Date.now
+    var sortIndex: Int = 0
+    var textContent: String = ""
+    var relativePath: String?
+    var thumbnailPath: String?
+    var externalURLString: String?
+    var title: String = ""
+    var subtitle: String = ""
+    var duration: Double = 0
+    var pixelWidth: Double = 0
+    var pixelHeight: Double = 0
+    var isLegacyReference: Bool = false
+    var entry: LookbookEntry?
+
+    init(
+        id: UUID = UUID(),
+        kind: InspirationAssetKind,
+        createdAt: Date = .now,
+        sortIndex: Int = 0,
+        textContent: String = "",
+        relativePath: String? = nil,
+        thumbnailPath: String? = nil,
+        externalURLString: String? = nil,
+        title: String = "",
+        subtitle: String = "",
+        duration: Double = 0,
+        pixelWidth: Double = 0,
+        pixelHeight: Double = 0,
+        isLegacyReference: Bool = false,
+        entry: LookbookEntry? = nil
+    ) {
+        self.id = id
+        self.kindRawValue = kind.rawValue
+        self.createdAt = createdAt
+        self.sortIndex = sortIndex
+        self.textContent = textContent
+        self.relativePath = relativePath
+        self.thumbnailPath = thumbnailPath
+        self.externalURLString = externalURLString
+        self.title = title
+        self.subtitle = subtitle
+        self.duration = duration
+        self.pixelWidth = pixelWidth
+        self.pixelHeight = pixelHeight
+        self.isLegacyReference = isLegacyReference
+        self.entry = entry
+    }
+
+    var kind: InspirationAssetKind {
+        get { InspirationAssetKind(rawValue: kindRawValue) ?? .image }
+        set { kindRawValue = newValue.rawValue }
+    }
+
+    var externalURL: URL? {
+        guard let externalURLString else { return nil }
+        return URL(string: externalURLString)
+    }
+}
+
+@Model
+final class SceneProject {
+    @Attribute(.unique) var id: UUID
+    var name: String
+    var projectDescription: String = ""
+    var createdAt: Date
+    var updatedAt: Date
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        projectDescription: String = "",
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.name = name
+        self.projectDescription = projectDescription
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
     }
 }
 
@@ -513,7 +638,7 @@ final class LookbookBoard {
 
     static func displayName(for boardName: String) -> String {
         switch boardName {
-        case defaultBoardName: "所有记录"
+        case defaultBoardName: "所有灵感"
         case favoritesBoardName: "收藏"
         default: boardName
         }

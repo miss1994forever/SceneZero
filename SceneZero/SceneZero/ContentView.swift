@@ -8,5 +8,8 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: [LookbookEntry.self, LookbookBoard.self], inMemory: true)
+        .modelContainer(
+            for: [LookbookEntry.self, InspirationAsset.self, LookbookBoard.self, SceneProject.self],
+            inMemory: true
+        )
 }

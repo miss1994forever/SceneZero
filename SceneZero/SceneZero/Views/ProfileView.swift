@@ -41,8 +41,8 @@ struct ProfileView: View {
                     .padding(.vertical, 6)
                 }
 
-                Section("灵感库") {
-                    statRow("参考包", value: entries.count, systemImage: "photo.on.rectangle", tint: SceneZeroTheme.accent)
+                Section("灵感") {
+                    statRow("灵感记录", value: entries.count, systemImage: "photo.on.rectangle", tint: SceneZeroTheme.accent)
                     statRow(
                         "灵感集",
                         value: boards.count + 2,
@@ -97,5 +97,5 @@ struct ProfileView: View {
 
 #Preview {
     ProfileView()
-        .modelContainer(for: [LookbookEntry.self, LookbookBoard.self], inMemory: true)
+        .modelContainer(for: [LookbookEntry.self, InspirationAsset.self, LookbookBoard.self, SceneProject.self], inMemory: true)
 }

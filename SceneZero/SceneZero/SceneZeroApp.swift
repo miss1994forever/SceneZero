@@ -14,6 +14,11 @@ struct SceneZeroApp: App {
         WindowGroup {
             ContentView()
         }
-        .modelContainer(for: [LookbookEntry.self, LookbookBoard.self])
+        .modelContainer(for: [
+            LookbookEntry.self,
+            InspirationAsset.self,
+            LookbookBoard.self,
+            SceneProject.self
+        ])
     }
 }

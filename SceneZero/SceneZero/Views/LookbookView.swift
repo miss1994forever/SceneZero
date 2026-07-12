@@ -1,9 +1,11 @@
 import SwiftData
 import SwiftUI
 import UIKit
+import PhotosUI
 
 struct LookbookView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Query(sort: \LookbookEntry.createdAt, order: .reverse) private var entries: [LookbookEntry]
     @Query(sort: \LookbookBoard.sortIndex) private var customBoards: [LookbookBoard]
 
@@ -11,69 +13,129 @@ struct LookbookView: View {
     @State private var newBoardName = ""
     @State private var boardNameBeingRenamed: String?
     @State private var renamedBoardName = ""
+    @State private var searchText = ""
+    @State private var libraryFilter: LibraryFilter = .all
+    @State private var selectedSection: InspirationSection = .all
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var selectedVideoItem: PhotosPickerItem?
+    @State private var selectedComposer: InspirationComposerKind?
+    @State private var importError: String?
+    @State private var showsProfile = false
+    @State private var showsAudioRecorder = false
 
     private let imageStorage = ImageStorageService()
+    private let mediaStorage = InspirationMediaStorageService()
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    libraryHeader
+                    sectionPicker
 
-                    LazyVGrid(columns: boardColumns, spacing: 14) {
-                        ForEach(boardSummaries) { summary in
-                            ZStack(alignment: .topTrailing) {
-                                NavigationLink {
-                                    BoardDetailView(
-                                        summary: summary,
-                                        entries: entries(for: summary),
-                                        boardNames: movableBoardNames
-                                    )
-                                } label: {
-                                    BoardCard(summary: summary)
-                                }
-                                .buttonStyle(.plain)
-
-                                if !summary.isSystemBoard {
-                                    Menu {
-                                        Button("重命名") {
-                                            boardNameBeingRenamed = summary.name
-                                            renamedBoardName = summary.name
-                                        }
-                                } label: {
-                                    Image(systemName: "ellipsis.circle")
-                                        .font(.system(size: 18, weight: .semibold))
-                                        .foregroundStyle(.primary)
-                                        .frame(width: 36, height: 36)
-                                        .liquidGlassCircle()
-                                        .frame(width: 44, height: 44)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("灵感集更多操作")
-                                .padding(8)
-                            }
+                    if isSearchingOrFiltering {
+                        referenceResults
+                    } else {
+                        switch selectedSection {
+                        case .all:
+                            inspirationHeader
+                            referenceResults
+                        case .collections:
+                            collectionHeader
+                            boardGrid
                         }
-                        }
-
-                        Button {
-                            newBoardName = ""
-                            showsCreateBoard = true
-                        } label: {
-                            CreateBoardCard()
-                        }
-                        .buttonStyle(.plain)
                     }
                 }
                 .padding()
             }
             .background(SceneZeroTheme.background)
-            .navigationTitle("灵感库")
+            .navigationTitle("灵感")
+            .searchable(text: $searchText, prompt: "搜索灵感、情绪、地点或标签")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("个人资料与设置", systemImage: "person.crop.circle") {
+                        showsProfile = true
+                    }
+                    .labelStyle(.iconOnly)
+                    .accessibilityHint("查看本地创作空间和取景设置")
+                }
+
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if selectedSection == .all {
+                        Menu("筛选", systemImage: "line.3.horizontal.decrease.circle") {
+                            Picker("筛选", selection: $libraryFilter) {
+                                ForEach(LibraryFilter.allCases) { filter in
+                                    Text(filter.title).tag(filter)
+                                }
+                            }
+                        }
+                        .labelStyle(.iconOnly)
+                        .accessibilityLabel("筛选灵感")
+                    }
+
+                    PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                        Label("添加照片灵感", systemImage: "photo.badge.plus")
+                    }
+                    .labelStyle(.iconOnly)
+                    .accessibilityHint("从照片图库添加一条灵感")
+
+                    Menu("添加灵感", systemImage: "plus") {
+                        Button("文字", systemImage: "text.quote") {
+                            selectedComposer = .text
+                        }
+                        Button("记录声音", systemImage: "waveform") {
+                            showsAudioRecorder = true
+                        }
+                        Button("音乐", systemImage: "music.note") {
+                            selectedComposer = .music
+                        }
+                        PhotosPicker(selection: $selectedVideoItem, matching: .videos) {
+                            Label("视频", systemImage: "video")
+                        }
+                    }
+                    .labelStyle(.iconOnly)
+                    .accessibilityHint("添加文字、声音、音乐或视频")
+                }
+            }
             .sheet(isPresented: $showsCreateBoard) {
                 createBoardSheet
             }
             .sheet(isPresented: renameSheetBinding) {
                 renameBoardSheet
+            }
+            .sheet(isPresented: $showsProfile) {
+                ProfileView()
+            }
+            .sheet(item: $selectedComposer) { kind in
+                InspirationComposerSheet(kind: kind, onSave: saveComposedInspiration)
+            }
+            .sheet(isPresented: $showsAudioRecorder) {
+                AudioRecorderSheet(onSave: saveAudioInspiration)
+            }
+            .onChange(of: selectedPhotoItem) { _, item in
+                Task {
+                    await importPhoto(from: item)
+                }
+            }
+            .onChange(of: selectedVideoItem) { _, item in
+                Task {
+                    await importVideo(from: item)
+                }
+            }
+            .task {
+                do {
+                    try InspirationMigrationService().migrateLegacyImages(in: modelContext)
+                    try InspirationFileMaintenanceService().removeOrphanedFiles(in: modelContext)
+                } catch {
+                    importError = "旧灵感仍可查看，但媒体维护失败：\(error.localizedDescription)"
+                }
+            }
+            .alert("无法导入照片", isPresented: Binding(
+                get: { importError != nil },
+                set: { if !$0 { importError = nil } }
+            )) {
+                Button("关闭", role: .cancel) {}
+            } message: {
+                Text(importError ?? "")
             }
         }
     }
@@ -82,39 +144,140 @@ struct LookbookView: View {
         [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: 16)]
     }
 
-    private var libraryHeader: some View {
-        HStack(spacing: 10) {
-            Label("默认私密 · 本地保存", systemImage: "lock.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(SceneZeroTheme.accent)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(SceneZeroTheme.accentSoft, in: Capsule())
+    private var isSearchingOrFiltering: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || libraryFilter != .all
+    }
 
-            Text("\(entries.count) 个参考包")
-                .font(.caption.weight(.medium))
+    private var sectionPicker: some View {
+        Picker("灵感视图", selection: $selectedSection) {
+            ForEach(InspirationSection.allCases) { section in
+                Text(section.title).tag(section)
+            }
+        }
+        .pickerStyle(.segmented)
+        .onChange(of: selectedSection) { _, section in
+            if section == .collections {
+                libraryFilter = .all
+            }
+        }
+    }
+
+    private var boardGrid: some View {
+        LazyVGrid(columns: boardColumns, spacing: 14) {
+            ForEach(boardSummaries) { summary in
+                ZStack(alignment: .topTrailing) {
+                    NavigationLink {
+                        BoardDetailView(
+                            summary: summary,
+                            entries: entries(for: summary),
+                            boardNames: movableBoardNames
+                        )
+                    } label: {
+                        BoardCard(summary: summary)
+                    }
+                    .buttonStyle(.plain)
+
+                    if !summary.isSystemBoard {
+                        Menu("更多操作", systemImage: "ellipsis.circle") {
+                            Button("重命名") {
+                                boardNameBeingRenamed = summary.name
+                                renamedBoardName = summary.name
+                            }
+                        }
+                        .labelStyle(.iconOnly)
+                        .accessibilityLabel("\(summary.displayName)更多操作")
+                        .padding(8)
+                    }
+                }
+            }
+
+            Button(action: prepareNewBoard) {
+                CreateBoardCard()
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    @ViewBuilder
+    private var referenceResults: some View {
+        if entries.isEmpty && !isSearchingOrFiltering {
+            ContentUnavailableView {
+                Label("记录第一个灵感", systemImage: "sparkles")
+            } description: {
+                Text("可以从一句话、一张照片、一段声音或现场取景开始。")
+            } actions: {
+                Button("记录文字", systemImage: "text.quote") {
+                    selectedComposer = .text
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(SceneZeroTheme.accent)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 56)
+        } else if filteredEntries.isEmpty {
+            ContentUnavailableView(
+                "没有找到灵感",
+                systemImage: "magnifyingglass",
+                description: Text("尝试其他关键词，或清除当前筛选。")
+            )
+            .frame(maxWidth: .infinity)
+            .padding(.top, 72)
+        } else {
+            WaterfallLayout(maximumColumns: dynamicTypeSize.isAccessibilitySize ? 1 : 3) {
+                ForEach(filteredEntries) { entry in
+                    NavigationLink {
+                        LookbookDetailView(entry: entry, boardNames: movableBoardNames)
+                    } label: {
+                        InspirationCard(entry: entry)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var inspirationHeader: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("所有灵感")
+                .font(.title2.bold())
+
+            Text("记录现实中的构图、光影和情绪；需要时再用 AR 与提示词继续发展。")
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            Spacer()
+            Label("\(entries.count) 条记录 · 默认保存在此设备", systemImage: "lock.fill")
+                .font(.footnote)
+                .foregroundStyle(SceneZeroTheme.accent)
         }
-        .padding(.top, 8)
+    }
+
+    private var collectionHeader: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("灵感集")
+                    .font(.title2.bold())
+                Text("围绕一个故事、情感状态或表达欲望慢慢收集。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button("新建", systemImage: "plus", action: prepareNewBoard)
+                .labelStyle(.iconOnly)
+                .accessibilityLabel("新建灵感集")
+        }
     }
 
     private var boardSummaries: [LookbookBoardSummary] {
         let builtIns = [
             LookbookBoardSummary(
-                name: LookbookBoard.defaultBoardName,
-                systemImage: "rectangle.stack",
-                count: entries.count,
-                isSystemBoard: true,
-                coverPaths: Array(entries.prefix(4).map(\.imagePath))
-            ),
-            LookbookBoardSummary(
                 name: LookbookBoard.favoritesBoardName,
                 systemImage: "heart",
                 count: favoriteEntries.count,
                 isSystemBoard: true,
-                coverPaths: Array(favoriteEntries.prefix(4).map(\.imagePath))
+                coverPaths: Array(favoriteEntries.lazy.map(\.imagePath).filter { !$0.isEmpty }.prefix(4))
             )
         ]
 
@@ -125,7 +288,7 @@ struct LookbookView: View {
                 systemImage: "square.grid.2x2",
                 count: boardEntries.count,
                 isSystemBoard: false,
-                coverPaths: Array(boardEntries.prefix(4).map(\.imagePath))
+                coverPaths: Array(boardEntries.lazy.map(\.imagePath).filter { !$0.isEmpty }.prefix(4))
             )
         }
 
@@ -134,6 +297,26 @@ struct LookbookView: View {
 
     private var favoriteEntries: [LookbookEntry] {
         entries.filter(\.isFavorite)
+    }
+
+    private var filteredEntries: [LookbookEntry] {
+        let searchTerm = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return entries.filter { entry in
+            let matchesFilter: Bool
+            switch libraryFilter {
+            case .all:
+                matchesFilter = true
+            case .favorites:
+                matchesFilter = entry.isFavorite
+            case .untagged:
+                matchesFilter = entry.tagsText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+
+            guard matchesFilter, !searchTerm.isEmpty else { return matchesFilter }
+            let searchableText = [entry.title, entry.note, entry.prompt, entry.tagsText, entry.locationName]
+                .joined(separator: " ")
+            return searchableText.localizedCaseInsensitiveContains(searchTerm)
+        }
     }
 
     private var movableBoardNames: [String] {
@@ -233,6 +416,11 @@ struct LookbookView: View {
         showsCreateBoard = false
     }
 
+    private func prepareNewBoard() {
+        newBoardName = ""
+        showsCreateBoard = true
+    }
+
     private func boardNameExists(_ name: String) -> Bool {
         movableBoardNames.contains { $0.caseInsensitiveCompare(name) == .orderedSame }
             || name.caseInsensitiveCompare(LookbookBoard.favoritesBoardName) == .orderedSame
@@ -268,6 +456,194 @@ struct LookbookView: View {
         try? modelContext.save()
         boardNameBeingRenamed = nil
     }
+
+    @MainActor
+    private func importPhoto(from item: PhotosPickerItem?) async {
+        guard let item else { return }
+        defer { selectedPhotoItem = nil }
+
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data) else {
+                importError = "无法读取这张照片。请尝试选择其他图片。"
+                return
+            }
+
+            let imagePath = try imageStorage.save(image)
+            let entry = LookbookEntry(
+                title: "照片灵感 \(Date().formatted(date: .numeric, time: .shortened))",
+                imagePath: imagePath,
+                prompt: "",
+                shotType: ShotType.wide.rawValue,
+                lightPreset: "未标注",
+                colorTemperature: "未标注",
+                filterName: FilterPreset.realistic.rawValue,
+                layoutJSON: "[]",
+                locationName: "照片图库"
+            )
+            let asset = InspirationAsset(
+                kind: .image,
+                relativePath: imagePath,
+                title: entry.title,
+                pixelWidth: image.size.width,
+                pixelHeight: image.size.height,
+                entry: entry
+            )
+            modelContext.insert(entry)
+            modelContext.insert(asset)
+            entry.assets.append(asset)
+            do {
+                try modelContext.save()
+            } catch {
+                imageStorage.delete(relativePath: imagePath)
+                throw error
+            }
+        } catch {
+            importError = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func importVideo(from item: PhotosPickerItem?) async {
+        guard let item else { return }
+        defer { selectedVideoItem = nil }
+
+        var storedPath: String?
+        do {
+            guard let importedFile = try await item.loadTransferable(type: ImportedMediaFile.self) else {
+                throw InspirationMediaStorageService.StorageError.unsupportedFile
+            }
+            defer { try? FileManager.default.removeItem(at: importedFile.url) }
+
+            let path = try mediaStorage.importFile(at: importedFile.url, kind: .video)
+            storedPath = path
+            let duration = await mediaStorage.duration(for: path)
+            let entry = makeEntry(title: "视频灵感", locationName: "照片图库")
+            let asset = InspirationAsset(
+                kind: .video,
+                relativePath: path,
+                title: entry.title,
+                duration: duration,
+                entry: entry
+            )
+            modelContext.insert(entry)
+            modelContext.insert(asset)
+            entry.assets.append(asset)
+            try modelContext.save()
+        } catch {
+            mediaStorage.delete(relativePath: storedPath)
+            importError = error.localizedDescription
+        }
+    }
+
+    private func saveComposedInspiration(
+        title: String,
+        content: String,
+        subtitle: String,
+        url: URL?
+    ) {
+        let kind = selectedComposer ?? .text
+        let assetKind: InspirationAssetKind = kind == .music ? .music : .text
+        let resolvedTitle = title.isEmpty
+            ? (kind == .music ? "音乐灵感" : String(content.prefix(24)))
+            : title
+        let entry = makeEntry(title: resolvedTitle, note: content)
+        let asset = InspirationAsset(
+            kind: assetKind,
+            textContent: content,
+            externalURLString: url?.absoluteString,
+            title: resolvedTitle,
+            subtitle: subtitle,
+            entry: entry
+        )
+        modelContext.insert(entry)
+        modelContext.insert(asset)
+        entry.assets.append(asset)
+        do {
+            try modelContext.save()
+        } catch {
+            importError = error.localizedDescription
+        }
+    }
+
+    private func saveAudioInspiration(
+        temporaryURL: URL,
+        duration: Double,
+        title: String,
+        note: String
+    ) throws {
+        let path = try mediaStorage.commitRecordedAudio(at: temporaryURL)
+        let resolvedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "声音灵感"
+            : title
+        let entry = makeEntry(title: resolvedTitle, note: note, locationName: "现场录音")
+        let asset = InspirationAsset(
+            kind: .audio,
+            textContent: note,
+            relativePath: path,
+            title: resolvedTitle,
+            duration: duration,
+            entry: entry
+        )
+        modelContext.insert(entry)
+        modelContext.insert(asset)
+        entry.assets.append(asset)
+        do {
+            try modelContext.save()
+        } catch {
+            mediaStorage.delete(relativePath: path)
+            throw error
+        }
+    }
+
+    private func makeEntry(
+        title: String,
+        note: String = "",
+        locationName: String = "灵感记录"
+    ) -> LookbookEntry {
+        LookbookEntry(
+            title: title,
+            imagePath: "",
+            prompt: "",
+            shotType: ShotType.wide.rawValue,
+            lightPreset: "未标注",
+            colorTemperature: "未标注",
+            filterName: FilterPreset.realistic.rawValue,
+            layoutJSON: "[]",
+            note: note,
+            locationName: locationName
+        )
+    }
+}
+
+private enum LibraryFilter: String, CaseIterable, Identifiable {
+    case all
+    case favorites
+    case untagged
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .all: "全部"
+        case .favorites: "收藏"
+        case .untagged: "未添加标签"
+        }
+    }
+}
+
+private enum InspirationSection: String, CaseIterable, Identifiable {
+    case all
+    case collections
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .all: "所有灵感"
+        case .collections: "灵感集"
+        }
+    }
 }
 
 private struct LookbookBoardSummary: Identifiable, Hashable {
@@ -282,15 +658,6 @@ private struct LookbookBoardSummary: Identifiable, Hashable {
         LookbookBoard.displayName(for: name)
     }
 
-    var statusTag: String {
-        if name == LookbookBoard.defaultBoardName {
-            return "最近更新"
-        }
-        if name == LookbookBoard.favoritesBoardName {
-            return "收藏"
-        }
-        return count > 0 ? "已整理" : "待整理"
-    }
 }
 
 private struct BoardCard: View {
@@ -308,16 +675,9 @@ private struct BoardCard: View {
                     .font(.headline)
                     .lineLimit(1)
 
-                Text("\(summary.count) 个场景 · \(summary.count) 个参考包")
+                Text("\(summary.count) 条灵感")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-
-                Text(summary.statusTag)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(SceneZeroTheme.accent)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(SceneZeroTheme.accentSoft, in: Capsule())
             }
         }
         .padding(10)
@@ -424,6 +784,7 @@ private struct CreateBoardCard: View {
 private struct BoardDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let summary: LookbookBoardSummary
     let entries: [LookbookEntry]
@@ -433,9 +794,7 @@ private struct BoardDetailView: View {
     @State private var arrangedEntries: [LookbookEntry] = []
 
     var body: some View {
-        GeometryReader { proxy in
-            let metrics = gridMetrics(for: proxy.size.width)
-
+        Group {
             if isArranging {
                 arrangeList
                     .background(SceneZeroTheme.background)
@@ -443,24 +802,26 @@ private struct BoardDetailView: View {
                 ScrollView {
                     if entries.isEmpty {
                         ContentUnavailableView(
-                            "暂无参考图",
+                            "这个灵感集还是空的",
                             systemImage: summary.systemImage,
-                            description: Text("去现场取景，或把参考图移动到这个灵感集。")
+                            description: Text("从所有灵感中选择内容，或去现场记录新的构图与光影。")
                         )
                         .padding(.top, 80)
                         .frame(maxWidth: .infinity)
                     } else {
-                        LazyVGrid(columns: metrics.columns, spacing: metrics.spacing) {
+                        WaterfallLayout(
+                            maximumColumns: dynamicTypeSize.isAccessibilitySize ? 1 : 3
+                        ) {
                             ForEach(entries) { entry in
                                 NavigationLink {
                                     LookbookDetailView(entry: entry, boardNames: boardNames)
                                 } label: {
-                                    ReferenceTile(entry: entry, tileWidth: metrics.tileWidth)
+                                    InspirationCard(entry: entry)
                                 }
                                 .buttonStyle(.plain)
                             }
                         }
-                        .padding(.horizontal, metrics.horizontalPadding)
+                        .padding(.horizontal)
                         .padding(.top, 12)
                         .padding(.bottom, 28)
                     }
@@ -518,32 +879,10 @@ private struct BoardDetailView: View {
                 }
                 .onMove(perform: moveEntries)
             } footer: {
-                Text("拖动参考图，整理这个灵感集里的场景顺序。")
+                Text("拖动内容，调整它们在这个灵感集中的浏览顺序。")
             }
         }
         .scrollContentBackground(.hidden)
-    }
-
-    private func gridMetrics(for width: CGFloat) -> BoardGridMetrics {
-        let horizontalPadding: CGFloat = width >= 700 ? 32 : 20
-        let spacing: CGFloat = width >= 700 ? 20 : 14
-        let availableWidth = max(1, width - horizontalPadding * 2)
-        let minimumTileWidth: CGFloat = width >= 700 ? 210 : 160
-        let count = max(1, Int((availableWidth + spacing) / (minimumTileWidth + spacing)))
-        let tileWidth = (
-            availableWidth - CGFloat(max(0, count - 1)) * spacing
-        ) / CGFloat(count)
-        let columns = Array(
-            repeating: GridItem(.fixed(tileWidth), spacing: spacing),
-            count: count
-        )
-
-        return BoardGridMetrics(
-            columns: columns,
-            spacing: spacing,
-            horizontalPadding: horizontalPadding,
-            tileWidth: tileWidth
-        )
     }
 
     private var canArrange: Bool {
@@ -575,13 +914,6 @@ private struct BoardDetailView: View {
 
 }
 
-private struct BoardGridMetrics {
-    let columns: [GridItem]
-    let spacing: CGFloat
-    let horizontalPadding: CGFloat
-    let tileWidth: CGFloat
-}
-
 private struct ReferenceThumbnail: View {
     let entry: LookbookEntry
     private let imageStorage = ImageStorageService()
@@ -606,74 +938,30 @@ private struct ReferenceThumbnail: View {
     }
 }
 
-private struct ReferenceTile: View {
-    let entry: LookbookEntry
-    let tileWidth: CGFloat
-    private let imageStorage = ImageStorageService()
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Group {
-                if let image = imageStorage.load(relativePath: entry.imagePath) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    Image(systemName: "photo")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(.quaternary)
-                }
-            }
-            .frame(width: imageWidth, height: imageHeight)
-            .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-            HStack(spacing: 6) {
-                Text(entry.title)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-
-                if entry.isFavorite {
-                    Image(systemName: "heart.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.pink)
-                }
-            }
-            .frame(height: 18, alignment: .leading)
-        }
-        .padding(8)
-        .frame(width: tileWidth, alignment: .leading)
-        .groupedCard(cornerRadius: 18)
-    }
-
-    private var imageWidth: CGFloat {
-        max(1, tileWidth - 16)
-    }
-
-    private var imageHeight: CGFloat {
-        imageWidth * 0.75
-    }
-}
-
 struct LookbookDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
     @State private var showsCopyConfirmation = false
     @State private var showsPromptFields = false
+    @State private var promptPlatform: VideoPromptPlatform = .generic
     @State private var editableNote: String
+    @State private var editableTags: String
+    @State private var editableLocation: String
+    @State private var showsDeleteConfirmation = false
 
     let entry: LookbookEntry
     var boardNames: [String] = [LookbookBoard.defaultBoardName]
 
     private let imageStorage = ImageStorageService()
+    private let mediaStorage = InspirationMediaStorageService()
 
     init(entry: LookbookEntry, boardNames: [String] = [LookbookBoard.defaultBoardName]) {
         self.entry = entry
         self.boardNames = boardNames
         _editableNote = State(initialValue: entry.note)
+        _editableTags = State(initialValue: entry.tagsText)
+        _editableLocation = State(initialValue: entry.locationName)
     }
 
     var body: some View {
@@ -681,6 +969,10 @@ struct LookbookDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     referenceSummaryCard(availableWidth: proxy.size.width)
+
+                    if shouldShowAssetGallery {
+                        assetGallery
+                    }
 
                     VStack(alignment: .leading, spacing: 10) {
                         Label("我当时想到", systemImage: "pencil")
@@ -704,19 +996,32 @@ struct LookbookDetailView: View {
                     .padding(14)
                     .groupedCard(cornerRadius: 20)
 
-                    structuredPromptCard
+                    if entry.inspirationKind == .image || !entry.prompt.isEmpty {
+                        structuredPromptCard
+                    }
+                    organizationCard
                     metadataCard
                 }
                 .padding()
             }
             .background(SceneZeroTheme.background)
         }
-        .navigationTitle("参考图详情")
+        .navigationTitle("灵感详情")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .onChange(of: editableNote) { _, newValue in
             entry.note = newValue
-            entry.prompt = PromptService.structuredPrompt(from: entry).fullText
+            if entry.inspirationKind == .image {
+                entry.prompt = PromptService.structuredPrompt(from: entry).fullText
+            }
+            try? modelContext.save()
+        }
+        .onChange(of: editableTags) { _, newValue in
+            entry.tagsText = newValue
+            try? modelContext.save()
+        }
+        .onChange(of: editableLocation) { _, newValue in
+            entry.locationName = newValue
             try? modelContext.save()
         }
         .toolbar {
@@ -733,9 +1038,9 @@ struct LookbookDetailView: View {
                 } label: {
                     Image(systemName: entry.isFavorite ? "heart.fill" : "heart")
                 }
-                .accessibilityLabel(entry.isFavorite ? "取消收藏参考图" : "收藏参考图")
+                .accessibilityLabel(entry.isFavorite ? "取消收藏灵感" : "收藏灵感")
 
-                Menu {
+                Menu("选择灵感集", systemImage: "rectangle.stack.badge.plus") {
                     ForEach(boardNames, id: \.self) { boardName in
                         Button {
                             entry.boardName = boardName
@@ -748,12 +1053,42 @@ struct LookbookDetailView: View {
                             }
                         }
                     }
-                } label: {
-                    Image(systemName: "folder")
                 }
-                .accessibilityLabel("移动到灵感集")
+                .labelStyle(.iconOnly)
+                .accessibilityHint("选择这条灵感当前所在的灵感集")
+
+                Menu("更多", systemImage: "ellipsis.circle") {
+                    Button("删除灵感", systemImage: "trash", role: .destructive) {
+                        showsDeleteConfirmation = true
+                    }
+                }
+                .labelStyle(.iconOnly)
+                .confirmationDialog(
+                    "删除这条灵感？",
+                    isPresented: $showsDeleteConfirmation,
+                    titleVisibility: .visible
+                ) {
+                    Button("删除灵感", role: .destructive, action: deleteEntry)
+                    Button("取消", role: .cancel) { }
+                } message: {
+                    Text("文字和媒体文件将从此设备删除，此操作无法撤销。")
+                }
             }
         }
+    }
+
+    private var shouldShowAssetGallery: Bool {
+        entry.inspirationKind != .image || entry.orderedAssets.count > 1
+    }
+
+    private var assetGallery: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(entry.orderedAssets) { asset in
+                InspirationAssetView(asset: asset)
+            }
+        }
+        .padding(14)
+        .groupedCard(cornerRadius: 20)
     }
 
     private func referenceSummaryCard(availableWidth: CGFloat) -> some View {
@@ -766,6 +1101,13 @@ struct LookbookDetailView: View {
                         .frame(width: min(112, availableWidth * 0.30), height: 86)
                         .clipped()
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                } else {
+                    Image(systemName: entry.inspirationKind.systemImage)
+                        .font(.title)
+                        .foregroundStyle(SceneZeroTheme.accent)
+                        .frame(width: min(112, availableWidth * 0.30), height: 86)
+                        .background(SceneZeroTheme.accentSoft, in: .rect(cornerRadius: 12))
+                        .accessibilityHidden(true)
                 }
 
                 VStack(alignment: .leading, spacing: 7) {
@@ -773,7 +1115,7 @@ struct LookbookDetailView: View {
                         .font(.headline)
                         .lineLimit(2)
 
-                    Text("来自现场取景 · \(entry.createdAt.formatted(date: .omitted, time: .shortened))")
+                    Text("\(entry.inspirationKind.displayName) · \(entry.createdAt.formatted(date: .omitted, time: .shortened))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
@@ -783,7 +1125,7 @@ struct LookbookDetailView: View {
                 }
             }
 
-            Text("保存到 \(LookbookBoard.displayName(for: entry.boardName))")
+            Text("位于 \(LookbookBoard.displayName(for: entry.boardName))")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(SceneZeroTheme.accent)
                 .padding(.horizontal, 10)
@@ -815,6 +1157,17 @@ struct LookbookDetailView: View {
                 .padding(.top, 8)
             }
             .font(.subheadline.weight(.semibold))
+
+            Picker("导出格式", selection: $promptPlatform) {
+                ForEach(VideoPromptPlatform.allCases) { platform in
+                    Text(platform.displayName).tag(platform)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Text("复制时会按 \(promptPlatform.displayName) 的字段顺序组织提示词。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
 
             VStack(spacing: 8) {
                 Button {
@@ -859,27 +1212,51 @@ struct LookbookDetailView: View {
         .groupedCard(cornerRadius: 20)
     }
 
+    private var organizationCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("地点与标签", systemImage: "tag")
+                .font(.headline)
+
+            TextField("地点或空间", text: $editableLocation)
+                .textFieldStyle(.roundedBorder)
+
+            TextField("标签，用逗号分隔", text: $editableTags)
+                .textFieldStyle(.roundedBorder)
+
+            Text("例如：黄昏、低机位、疏离。标签可用于灵感搜索。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .groupedCard(cornerRadius: 20)
+    }
+
     private var displayShotName: String {
         ShotType(rawValue: entry.shotType)?.displayName ?? entry.shotType
     }
 
     private var metadataCard: some View {
         Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
-            let lightRecords = lightRecords(for: entry)
             metadataRow("灵感集", LookbookBoard.displayName(for: entry.boardName))
-            metadataRow("景别", displayShotName)
-            metadataRow("画幅", entry.frameAspectRatio)
-            metadataRow("镜头", entry.lensPreset)
-            metadataRow("构图线", entry.showsCompositionGuides ? "开启" : "关闭")
-            metadataRow("灯光", entry.lightPreset)
-            if lightRecords.count == 1, let light = lightRecords.first {
-                metadataRow("色温", light.colorTemperature?.displayName ?? entry.colorTemperature)
-                metadataRow("强度", "\(Int((light.lightIntensity ?? entry.lightIntensity) * 100))%")
-                metadataRow("范围", "\(Int((light.lightRadius ?? entry.lightRadius) * 100))%")
-            } else if lightRecords.count > 1 {
-                metadataRow("灯位细节", "已保存 \(lightRecords.count) 个灯位")
+            metadataRow("类型", entry.inspirationKind.displayName)
+            metadataRow("记录时间", entry.createdAt.formatted(date: .abbreviated, time: .shortened))
+
+            if entry.inspirationKind == .image {
+                let lightRecords = lightRecords(for: entry)
+                metadataRow("景别", displayShotName)
+                metadataRow("画幅", entry.frameAspectRatio)
+                metadataRow("镜头", entry.lensPreset)
+                metadataRow("构图线", entry.showsCompositionGuides ? "开启" : "关闭")
+                metadataRow("灯光", entry.lightPreset)
+                if lightRecords.count == 1, let light = lightRecords.first {
+                    metadataRow("色温", light.colorTemperature?.displayName ?? entry.colorTemperature)
+                    metadataRow("强度", "\(Int((light.lightIntensity ?? entry.lightIntensity) * 100))%")
+                    metadataRow("范围", "\(Int((light.lightRadius ?? entry.lightRadius) * 100))%")
+                } else if lightRecords.count > 1 {
+                    metadataRow("灯位细节", "已保存 \(lightRecords.count) 个灯位")
+                }
+                metadataRow("色彩风格", FilterPreset(rawValue: entry.filterName)?.displayName ?? entry.filterName)
             }
-            metadataRow("色彩风格", FilterPreset(rawValue: entry.filterName)?.displayName ?? entry.filterName)
         }
         .font(.subheadline)
         .padding(14)
@@ -899,7 +1276,7 @@ struct LookbookDetailView: View {
     }
 
     private func copyPrompt() {
-        UIPasteboard.general.string = PromptService.structuredPrompt(from: entry).fullText
+        UIPasteboard.general.string = PromptService.adaptedPrompt(from: entry, for: promptPlatform)
 
         withAnimation(.easeOut(duration: 0.18)) {
             showsCopyConfirmation = true
@@ -911,6 +1288,30 @@ struct LookbookDetailView: View {
                 showsCopyConfirmation = false
             }
         }
+    }
+
+    private func deleteEntry() {
+        for asset in entry.assets {
+            switch asset.kind {
+            case .image:
+                imageStorage.delete(relativePath: asset.relativePath ?? "")
+            case .audio, .video:
+                mediaStorage.delete(relativePath: asset.relativePath)
+                if let thumbnailPath = asset.thumbnailPath {
+                    imageStorage.delete(relativePath: thumbnailPath)
+                }
+            case .text, .music:
+                break
+            }
+        }
+
+        if entry.assets.isEmpty && !entry.imagePath.isEmpty {
+            imageStorage.delete(relativePath: entry.imagePath)
+        }
+
+        modelContext.delete(entry)
+        try? modelContext.save()
+        dismiss()
     }
 }
 
@@ -972,5 +1373,5 @@ private struct LookbookBackButton: View {
 
 #Preview {
     LookbookView()
-        .modelContainer(for: [LookbookEntry.self, LookbookBoard.self], inMemory: true)
+        .modelContainer(for: [LookbookEntry.self, InspirationAsset.self, LookbookBoard.self, SceneProject.self], inMemory: true)
 }

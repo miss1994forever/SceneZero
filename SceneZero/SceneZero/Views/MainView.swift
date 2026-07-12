@@ -6,6 +6,7 @@ struct MainView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \LookbookEntry.createdAt, order: .reverse) private var entries: [LookbookEntry]
     @Query(sort: \LookbookBoard.sortIndex) private var customBoards: [LookbookBoard]
+    @Query(sort: \SceneProject.updatedAt, order: .reverse) private var projects: [SceneProject]
 
     @AppStorage("usesRealityKitModelLighting") private var usesRealityKitModelLighting = false
 
@@ -107,11 +108,18 @@ struct MainView: View {
                 capture: capture,
                 boardNames: movableBoardNames,
                 existingBoardNames: allBoardNames,
+                projects: projects,
                 onCancel: {
                     pendingCapture = nil
                 },
-                onSave: { title, boardName, note in
-                    savePendingCapture(capture, title: title, boardName: boardName, note: note)
+                onSave: { title, boardName, note, projectID in
+                    savePendingCapture(
+                        capture,
+                        title: title,
+                        boardName: boardName,
+                        note: note,
+                        projectID: projectID
+                    )
                 }
             )
             .presentationDetents([.large])
@@ -464,7 +472,8 @@ struct MainView: View {
         _ capture: PendingLookbookCapture,
         title: String,
         boardName: String,
-        note: String
+        note: String,
+        projectID: UUID?
     ) -> Error? {
         do {
             let targetBoardName = boardName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -490,10 +499,29 @@ struct MainView: View {
                 layoutJSON: capture.layoutJSON,
                 boardName: resolvedBoardName,
                 sortIndex: nextSortIndex(for: resolvedBoardName),
-                note: note.trimmingCharacters(in: .whitespacesAndNewlines)
+                note: note.trimmingCharacters(in: .whitespacesAndNewlines),
+                projectID: projectID
+            )
+            let asset = InspirationAsset(
+                kind: .image,
+                relativePath: imagePath,
+                title: entry.title,
+                pixelWidth: capture.image.size.width,
+                pixelHeight: capture.image.size.height,
+                entry: entry
             )
             modelContext.insert(entry)
-            try modelContext.save()
+            modelContext.insert(asset)
+            entry.assets.append(asset)
+            if let project = projects.first(where: { $0.id == projectID }) {
+                project.updatedAt = .now
+            }
+            do {
+                try modelContext.save()
+            } catch {
+                imageStorage.delete(relativePath: imagePath)
+                throw error
+            }
             pendingCapture = nil
             alertTitle = "参考包已保存"
             alertMessage = "已保存到灵感库。"
@@ -521,7 +549,7 @@ struct MainView: View {
 
 #Preview {
     MainView()
-        .modelContainer(for: [LookbookEntry.self, LookbookBoard.self], inMemory: true)
+        .modelContainer(for: [LookbookEntry.self, InspirationAsset.self, LookbookBoard.self, SceneProject.self], inMemory: true)
 }
 
 private struct PendingLookbookCapture: Identifiable {
@@ -567,14 +595,16 @@ private struct CaptureReviewSheet: View {
     let capture: PendingLookbookCapture
     let boardNames: [String]
     let existingBoardNames: [String]
+    let projects: [SceneProject]
     let onCancel: () -> Void
-    let onSave: (String, String, String) -> Error?
+    let onSave: (String, String, String, UUID?) -> Error?
 
     @State private var title: String
     @State private var selectedBoardName: String
     @State private var createsNewBoard = false
     @State private var newBoardName = ""
     @State private var note = ""
+    @State private var selectedProjectID: UUID?
     @State private var isSaving = false
     @State private var saveError: String?
     @State private var showsDiscardConfirmation = false
@@ -584,16 +614,19 @@ private struct CaptureReviewSheet: View {
         capture: PendingLookbookCapture,
         boardNames: [String],
         existingBoardNames: [String],
+        projects: [SceneProject],
         onCancel: @escaping () -> Void,
-        onSave: @escaping (String, String, String) -> Error?
+        onSave: @escaping (String, String, String, UUID?) -> Error?
     ) {
         self.capture = capture
         self.boardNames = boardNames
         self.existingBoardNames = existingBoardNames
+        self.projects = projects
         self.onCancel = onCancel
         self.onSave = onSave
         _title = State(initialValue: "")
         _selectedBoardName = State(initialValue: boardNames.first ?? LookbookBoard.defaultBoardName)
+        _selectedProjectID = State(initialValue: nil)
     }
 
     var body: some View {
@@ -760,6 +793,13 @@ private struct CaptureReviewSheet: View {
                 TextField("灵感集名称", text: $newBoardName)
                     .textFieldStyle(.roundedBorder)
             }
+
+            Picker("归入项目", selection: $selectedProjectID) {
+                Text("暂不归入项目").tag(UUID?.none)
+                ForEach(projects) { project in
+                    Text(project.name).tag(Optional(project.id))
+                }
+            }
         }
         .padding(14)
         .groupedCard(cornerRadius: 18)
@@ -798,6 +838,7 @@ private struct CaptureReviewSheet: View {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || createsNewBoard
+            || selectedProjectID != nil
             || selectedBoardName != (boardNames.first ?? LookbookBoard.defaultBoardName)
     }
 
@@ -828,7 +869,7 @@ private struct CaptureReviewSheet: View {
         saveError = nil
         isSaving = true
 
-        if let error = onSave(resolvedTitle, resolvedBoardName, note) {
+        if let error = onSave(resolvedTitle, resolvedBoardName, note, selectedProjectID) {
             saveError = error.localizedDescription
             isSaving = false
         }
