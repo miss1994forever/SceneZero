@@ -16,12 +16,24 @@ struct ProfileView: View {
                             .font(.title2.weight(.semibold))
                             .foregroundStyle(.white)
                             .frame(width: 58, height: 58)
-                            .background(Color.accentColor, in: Circle())
+                            .background {
+                                Circle()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [
+                                                SceneZeroTheme.accent,
+                                                SceneZeroTheme.accent.opacity(0.72)
+                                            ],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                            }
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text("SceneZero Creator")
                                 .font(.headline)
-                            Text("Local workspace")
+                            Text("本地创作空间")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
@@ -29,50 +41,56 @@ struct ProfileView: View {
                     .padding(.vertical, 6)
                 }
 
-                Section("Library") {
-                    statRow("Captures", value: entries.count, systemImage: "photo.on.rectangle")
+                Section("灵感库") {
+                    statRow("参考包", value: entries.count, systemImage: "photo.on.rectangle", tint: SceneZeroTheme.accent)
                     statRow(
-                        "Boards",
+                        "灵感集",
                         value: boards.count + 2,
-                        systemImage: "rectangle.stack"
+                        systemImage: "rectangle.stack",
+                        tint: SceneZeroTheme.accent
                     )
                     statRow(
-                        "Favorites",
+                        "收藏",
                         value: entries.filter(\.isFavorite).count,
-                        systemImage: "heart"
+                        systemImage: "heart",
+                        tint: SceneZeroTheme.accent
                     )
                 }
 
                 Section {
                     Toggle(isOn: $usesRealityKitModelLighting) {
-                        Label("3D Model Lighting", systemImage: "lightbulb.max")
+                        Label("3D 模型灯光", systemImage: "lightbulb.max")
+                            .symbolRenderingMode(.hierarchical)
                     }
-                    Label("Export Lookbook", systemImage: "square.and.arrow.up")
-                    Label("Capture Preferences", systemImage: "slider.horizontal.3")
-                    Label("About SceneZero", systemImage: "info.circle")
+                    .tint(SceneZeroTheme.accent)
                 } header: {
-                    Text("Workspace")
+                    Text("AR 与性能")
                 } footer: {
-                    Text("Lighting Overlay stays available for stable real-time light previews. 3D Model Lighting adds RealityKit lights to virtual models and may reduce stability on some devices.")
+                    Text("灯光叠层会保持稳定的实时预览。3D 模型灯光会向 RealityKit 模型添加光源，在部分设备上可能影响稳定性。")
                 }
                 .foregroundStyle(.primary)
 
                 Section {
-                    Text("Profile is local-only in this course version. Accounts, cloud sync, and public sharing are future work.")
+                    Text("当前课程版本仅使用本地资料。账号、云同步和公开分享属于后续功能。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("Profile")
+            .navigationTitle("我的")
+            .scrollContentBackground(.hidden)
+            .background(SceneZeroTheme.background)
+            .tint(SceneZeroTheme.accent)
         }
     }
 
-    private func statRow(_ title: String, value: Int, systemImage: String) -> some View {
+    private func statRow(_ title: String, value: Int, systemImage: String, tint: Color) -> some View {
         HStack {
             Label(title, systemImage: systemImage)
+                .foregroundStyle(.primary, tint)
             Spacer()
             Text(value, format: .number)
-                .foregroundStyle(.secondary)
+                .font(.headline.monospacedDigit())
+                .foregroundStyle(tint)
         }
     }
 }

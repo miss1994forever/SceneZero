@@ -38,8 +38,8 @@ final class ARSceneController: ObservableObject {
     }
     @Published var lightRadius = 0.55
     @Published var hasLightingOverlay = false
-    @Published var locationDescription = "realistic interior location"
-    @Published var statusText = "Move your device to find a surface"
+    @Published var locationDescription = "真实现场空间"
+    @Published var statusText = "移动手机扫描平面"
     @Published var isCapturing = false
     @Published private(set) var hasSelectedObject = false
 
@@ -66,10 +66,10 @@ final class ARSceneController: ObservableObject {
         if isEnabled {
             addSpotLightsForPlacedLightMarkers()
             updatePlacedLights()
-            statusText = "3D model lighting enabled"
+            statusText = "模型灯光已开启"
         } else {
             removeAllSpotLights()
-            statusText = "3D model lighting disabled"
+            statusText = "模型灯光已关闭"
         }
     }
 
@@ -79,13 +79,13 @@ final class ARSceneController: ObservableObject {
         }
 
         guard selectedTool != .frame else {
-            statusText = "\(frameAspectRatio.rawValue) frame active"
+            statusText = "\(frameAspectRatio.displayName) 构图已启用"
             return
         }
 
         let results = arView.raycast(from: point, allowing: .estimatedPlane, alignment: .horizontal)
         guard let result = results.first else {
-            statusText = "Find a horizontal surface"
+            statusText = "请对准水平平面"
             return
         }
 
@@ -104,7 +104,7 @@ final class ARSceneController: ObservableObject {
 
         syncRecordsFromPlacedObjects()
         isCapturing = true
-        statusText = "Capturing frame..."
+        statusText = "正在保存参考图..."
 
         arView.snapshot(saveToHDR: false) { [weak self] image in
             Task { @MainActor in
@@ -112,7 +112,7 @@ final class ARSceneController: ObservableObject {
                 self.isCapturing = false
 
                 guard let image else {
-                    self.statusText = "Capture failed"
+                    self.statusText = "取景失败"
                     completion(.failure(CaptureError.snapshotFailed))
                     return
                 }
@@ -127,7 +127,7 @@ final class ARSceneController: ObservableObject {
                     locationDescription: self.locationDescription
                 )
 
-                self.statusText = "Frame captured"
+                self.statusText = "参考图已生成"
                 completion(.success(CapturedScene(
                     image: image,
                     prompt: prompt,
@@ -157,13 +157,13 @@ final class ARSceneController: ObservableObject {
         layoutOriginPosition = nil
         hasLightingOverlay = false
         spotLights.removeAll()
-        statusText = "Scene cleared"
+        statusText = "场景已清空"
     }
 
     func deleteSelectedObject() {
         guard let selectedObjectID,
               let placedIndex = placedObjects.firstIndex(where: { $0.id == selectedObjectID }) else {
-            statusText = "Select an object first"
+            statusText = "请先选择一个标记"
             return
         }
 
@@ -178,12 +178,12 @@ final class ARSceneController: ObservableObject {
         hasSubjectAnchor = records.contains { $0.type == .subject }
         refreshLightingOverlayState()
 
-        statusText = "\(placedObject.tool.rawValue) removed"
+        statusText = "\(placedObject.tool.displayName)已移除"
     }
 
     func resetSelectedObjectScale() {
         guard let placedObject = activePlacedObject() else {
-            statusText = "Select an object first"
+            statusText = "请先选择一个标记"
             return
         }
 
@@ -198,7 +198,7 @@ final class ARSceneController: ObservableObject {
         placedObject.entity.position.y = baseHeightOffset(for: placedObject, scale: newScale)
         syncRecord(for: placedObject)
 
-        statusText = "\(placedObject.tool.rawValue) reset"
+        statusText = "\(placedObject.tool.displayName)大小已重置"
     }
 
     func assetPreset(for tool: SceneTool) -> AssetPreset {
@@ -222,14 +222,14 @@ final class ARSceneController: ObservableObject {
             isUpdatingObjectScaleFromSelection = true
             objectScale = preset.defaultScale
             isUpdatingObjectScaleFromSelection = false
-            statusText = "\(preset.rawValue) ready"
+            statusText = "\(preset.displayName)已准备"
         case .prop:
             propAssetPreset = preset
             selectedObjectID = nil
             isUpdatingObjectScaleFromSelection = true
             objectScale = preset.defaultScale
             isUpdatingObjectScaleFromSelection = false
-            statusText = "\(preset.rawValue) ready"
+            statusText = "\(preset.displayName)已准备"
         case .light, .frame:
             break
         }
@@ -276,9 +276,9 @@ final class ARSceneController: ObservableObject {
 
         if tool == .subject {
             hasSubjectAnchor = true
-            statusText = "Subject placed"
+            statusText = "角色已放置"
         } else {
-            statusText = "\(tool.rawValue) placed"
+            statusText = "\(tool.displayName)已放置"
         }
 
         arView.scene.addAnchor(anchor)
@@ -302,7 +302,7 @@ final class ARSceneController: ObservableObject {
     private func makeEntity(for tool: SceneTool, assetPreset: AssetPreset?, scale: Float) -> ModelEntity? {
         if let assetPreset,
            let bundledEntity = makeBundledAssetEntity(for: assetPreset, scale: scale) {
-            statusText = "\(assetPreset.rawValue) USDZ loaded"
+            statusText = "\(assetPreset.displayName)模型已载入"
             return bundledEntity
         }
 
@@ -792,7 +792,7 @@ final class ARSceneController: ObservableObject {
 
         syncRecord(for: placedObject)
 
-        statusText = "\(selectedTool.rawValue) size \(Int(objectScale * 100))%"
+        statusText = "\(selectedTool.displayName)大小 \(Int(objectScale * 100))%"
     }
 
     private func baseHeightOffset(for tool: SceneTool, scale: Float) -> Float {
@@ -911,7 +911,7 @@ final class ARSceneController: ObservableObject {
         objectScale = Double(currentScale(for: placedObject))
         isUpdatingObjectScaleFromSelection = false
 
-        statusText = "\(placedObject.tool.rawValue) selected"
+        statusText = "已选择\(placedObject.tool.displayName)"
     }
 
     private func activePlacedObject() -> PlacedObject? {

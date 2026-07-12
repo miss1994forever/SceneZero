@@ -1,12 +1,34 @@
 import SwiftUI
 
 private struct LiquidGlassCapsuleModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
     let material: Material
     let shadowOpacity: Double
+    let tint: Color
+    let tintOpacity: Double
 
     func body(content: Content) -> some View {
         content
-            .background(material, in: Capsule())
+            .background(reduceTransparency ? AnyShapeStyle(SceneZeroTheme.cardBackground) : AnyShapeStyle(material), in: Capsule())
+            .background {
+                Capsule()
+                    .fill(tint.opacity(tintOpacity))
+            }
+            .background {
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                .white.opacity(0.34),
+                                .white.opacity(0.10)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .blendMode(.plusLighter)
+            }
             .overlay {
                 Capsule()
                     .stroke(
@@ -28,12 +50,32 @@ private struct LiquidGlassCapsuleModifier: ViewModifier {
 }
 
 private struct LiquidGlassRoundedModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
     let cornerRadius: CGFloat
     let material: Material
 
     func body(content: Content) -> some View {
         content
-            .background(material, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .background(
+                reduceTransparency ? AnyShapeStyle(SceneZeroTheme.cardBackground) : AnyShapeStyle(material),
+                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            )
+            .background {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                .white.opacity(0.30),
+                                .white.opacity(0.08),
+                                .black.opacity(0.04)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .blendMode(.plusLighter)
+            }
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(
@@ -55,14 +97,19 @@ private struct LiquidGlassRoundedModifier: ViewModifier {
 }
 
 private struct LiquidGlassCircleModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
     let isSelected: Bool
 
     func body(content: Content) -> some View {
         content
             .background {
                 Circle()
-                    .fill(isSelected ? .white.opacity(0.88) : .black.opacity(0.30))
-                    .background(.ultraThinMaterial, in: Circle())
+                    .fill(isSelected ? .white.opacity(0.88) : .white.opacity(0.18))
+                    .background(
+                        reduceTransparency ? AnyShapeStyle(SceneZeroTheme.cardBackground) : AnyShapeStyle(.ultraThinMaterial),
+                        in: Circle()
+                    )
             }
             .overlay {
                 Circle()
@@ -84,6 +131,8 @@ private struct LiquidGlassCircleModifier: ViewModifier {
 }
 
 private struct LiquidGlassChipModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
     let isSelected: Bool
 
     func body(content: Content) -> some View {
@@ -92,7 +141,10 @@ private struct LiquidGlassChipModifier: ViewModifier {
             .background {
                 Capsule()
                     .fill(isSelected ? .white.opacity(0.90) : .white.opacity(0.14))
-                    .background(.ultraThinMaterial, in: Capsule())
+                    .background(
+                        reduceTransparency ? AnyShapeStyle(SceneZeroTheme.cardBackground) : AnyShapeStyle(.ultraThinMaterial),
+                        in: Capsule()
+                    )
             }
             .overlay {
                 Capsule()
@@ -101,12 +153,51 @@ private struct LiquidGlassChipModifier: ViewModifier {
     }
 }
 
+private struct LiquidGlassPanelModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    let cornerRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                reduceTransparency ? AnyShapeStyle(SceneZeroTheme.cardBackground) : AnyShapeStyle(.thinMaterial),
+                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            )
+            .overlay(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(.white.opacity(0.46), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.12), radius: 24, x: 0, y: 14)
+    }
+}
+
+private struct GroupedCardModifier: ViewModifier {
+    let cornerRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .background(SceneZeroTheme.cardBackground, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(SceneZeroTheme.separator.opacity(0.18), lineWidth: 0.5)
+            }
+    }
+}
+
 extension View {
     func liquidGlassCapsule(
         material: Material = .ultraThinMaterial,
-        shadowOpacity: Double = 0.18
+        shadowOpacity: Double = 0.18,
+        tint: Color = .clear,
+        tintOpacity: Double = 0
     ) -> some View {
-        modifier(LiquidGlassCapsuleModifier(material: material, shadowOpacity: shadowOpacity))
+        modifier(LiquidGlassCapsuleModifier(
+            material: material,
+            shadowOpacity: shadowOpacity,
+            tint: tint,
+            tintOpacity: tintOpacity
+        ))
     }
 
     func liquidGlassRounded(
@@ -122,5 +213,13 @@ extension View {
 
     func liquidGlassChip(isSelected: Bool = false) -> some View {
         modifier(LiquidGlassChipModifier(isSelected: isSelected))
+    }
+
+    func liquidGlassPanel(cornerRadius: CGFloat = 24) -> some View {
+        modifier(LiquidGlassPanelModifier(cornerRadius: cornerRadius))
+    }
+
+    func groupedCard(cornerRadius: CGFloat = 18) -> some View {
+        modifier(GroupedCardModifier(cornerRadius: cornerRadius))
     }
 }

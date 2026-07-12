@@ -12,6 +12,15 @@ enum SceneTool: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
+    var displayName: String {
+        switch self {
+        case .subject: "角色"
+        case .prop: "道具"
+        case .frame: "构图"
+        case .light: "灯光"
+        }
+    }
+
     var systemImage: String {
         switch self {
         case .subject: "person.crop.rectangle"
@@ -50,6 +59,22 @@ enum AssetPreset: String, CaseIterable, Identifiable, Codable {
     case lampStand = "Lamp Stand"
 
     var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .subjectBlock: "角色块"
+        case .human: "人物"
+        case .propBox: "道具块"
+        case .chair: "椅子"
+        case .table: "桌子"
+        case .sofa: "沙发"
+        case .desk: "书桌"
+        case .bookcase: "书架"
+        case .bed: "床"
+        case .nightStand: "床头柜"
+        case .lampStand: "灯位"
+        }
+    }
 
     var category: AssetCategory {
         switch self {
@@ -173,6 +198,16 @@ enum LightPreset: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
+    var displayName: String {
+        switch self {
+        case .keyLeft: "左前主光"
+        case .rimRight: "右后轮廓光"
+        case .frontSoft: "正面柔光"
+        case .topDown: "顶部光"
+        case .lowSide: "低侧光"
+        }
+    }
+
     var promptText: String {
         switch self {
         case .keyLeft: "warm key light from front left"
@@ -227,6 +262,15 @@ enum ColorTemperature: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
+    var displayName: String {
+        switch self {
+        case .warm3200: "暖光"
+        case .neutral4500: "中性光"
+        case .daylight5600: "自然光"
+        case .cool7000: "冷光"
+        }
+    }
+
     var uiColor: UIColor {
         switch self {
         case .warm3200: UIColor(red: 1.0, green: 0.74, blue: 0.42, alpha: 1.0)
@@ -254,6 +298,15 @@ enum FilterPreset: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
+    var displayName: String {
+        switch self {
+        case .realistic: "写实"
+        case .tealOrange: "青橙"
+        case .neonNight: "霓虹夜"
+        case .noirGold: "黑金"
+        }
+    }
+
     var promptText: String {
         switch self {
         case .realistic: "low saturation realistic film look"
@@ -271,6 +324,15 @@ enum ShotType: String, CaseIterable, Identifiable, Codable {
     case lowAngle = "Low Angle"
 
     var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .wide: "远景"
+        case .medium: "中景"
+        case .closeUp: "近景"
+        case .lowAngle: "低角度"
+        }
+    }
 
     var promptText: String {
         switch self {
@@ -306,6 +368,8 @@ enum FrameAspectRatio: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
+    var displayName: String { rawValue }
+
     var ratio: CGFloat {
         switch self {
         case .wide16x9: 16.0 / 9.0
@@ -332,6 +396,8 @@ enum LensPreset: String, CaseIterable, Identifiable, Codable {
     case portrait85 = "85mm"
 
     var id: String { rawValue }
+
+    var displayName: String { rawValue }
 
     var promptText: String {
         switch self {
@@ -444,6 +510,14 @@ final class LookbookEntry {
 final class LookbookBoard {
     static let defaultBoardName = "All Captures"
     static let favoritesBoardName = "Favorites"
+
+    static func displayName(for boardName: String) -> String {
+        switch boardName {
+        case defaultBoardName: "所有记录"
+        case favoritesBoardName: "收藏"
+        default: boardName
+        }
+    }
 
     @Attribute(.unique) var id: UUID
     var name: String

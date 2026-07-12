@@ -17,51 +17,58 @@ struct LookbookView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVGrid(columns: boardColumns, spacing: 16) {
-                    ForEach(boardSummaries) { summary in
-                        ZStack(alignment: .topTrailing) {
-                            NavigationLink {
-                                BoardDetailView(
-                                    summary: summary,
-                                    entries: entries(for: summary),
-                                    boardNames: movableBoardNames
-                                )
-                            } label: {
-                                BoardCard(summary: summary)
-                            }
-                            .buttonStyle(.plain)
+                VStack(alignment: .leading, spacing: 18) {
+                    libraryHeader
 
-                            if !summary.isSystemBoard {
-                                Menu {
-                                    Button("Rename") {
-                                        boardNameBeingRenamed = summary.name
-                                        renamedBoardName = summary.name
-                                    }
+                    LazyVGrid(columns: boardColumns, spacing: 14) {
+                        ForEach(boardSummaries) { summary in
+                            ZStack(alignment: .topTrailing) {
+                                NavigationLink {
+                                    BoardDetailView(
+                                        summary: summary,
+                                        entries: entries(for: summary),
+                                        boardNames: movableBoardNames
+                                    )
+                                } label: {
+                                    BoardCard(summary: summary)
+                                }
+                                .buttonStyle(.plain)
+
+                                if !summary.isSystemBoard {
+                                    Menu {
+                                        Button("重命名") {
+                                            boardNameBeingRenamed = summary.name
+                                            renamedBoardName = summary.name
+                                        }
                                 } label: {
                                     Image(systemName: "ellipsis.circle")
                                         .font(.system(size: 18, weight: .semibold))
                                         .foregroundStyle(.primary)
                                         .frame(width: 36, height: 36)
                                         .liquidGlassCircle()
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
+                                .accessibilityLabel("灵感集更多操作")
                                 .padding(8)
                             }
                         }
-                    }
+                        }
 
-                    Button {
-                        newBoardName = ""
-                        showsCreateBoard = true
-                    } label: {
-                        CreateBoardCard()
+                        Button {
+                            newBoardName = ""
+                            showsCreateBoard = true
+                        } label: {
+                            CreateBoardCard()
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
                 .padding()
             }
-            .background(lookbookBackground)
-            .navigationTitle("Lookbook")
+            .background(SceneZeroTheme.background)
+            .navigationTitle("灵感库")
             .sheet(isPresented: $showsCreateBoard) {
                 createBoardSheet
             }
@@ -73,6 +80,24 @@ struct LookbookView: View {
 
     private var boardColumns: [GridItem] {
         [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: 16)]
+    }
+
+    private var libraryHeader: some View {
+        HStack(spacing: 10) {
+            Label("默认私密 · 本地保存", systemImage: "lock.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(SceneZeroTheme.accent)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(SceneZeroTheme.accentSoft, in: Capsule())
+
+            Text("\(entries.count) 个参考包")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+
+            Spacer()
+        }
+        .padding(.top, 8)
     }
 
     private var boardSummaries: [LookbookBoardSummary] {
@@ -118,21 +143,21 @@ struct LookbookView: View {
     private var createBoardSheet: some View {
         NavigationStack {
             Form {
-                Section("Board") {
-                    TextField("Name", text: $newBoardName)
+                Section("灵感集") {
+                    TextField("名称", text: $newBoardName)
                 }
             }
-            .navigationTitle("New Board")
+            .navigationTitle("新建灵感集")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button("取消") {
                         showsCreateBoard = false
                     }
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
+                    Button("创建") {
                         createBoard()
                     }
                     .disabled(trimmedBoardName.isEmpty || boardNameExists(trimmedBoardName))
@@ -144,21 +169,21 @@ struct LookbookView: View {
     private var renameBoardSheet: some View {
         NavigationStack {
             Form {
-                Section("Lookbook") {
-                    TextField("Name", text: $renamedBoardName)
+                Section("灵感集") {
+                    TextField("名称", text: $renamedBoardName)
                 }
             }
-            .navigationTitle("Rename Lookbook")
+            .navigationTitle("重命名灵感集")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button("取消") {
                         boardNameBeingRenamed = nil
                     }
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button("保存") {
                         renameBoard()
                     }
                     .disabled(!canRenameBoard)
@@ -176,19 +201,6 @@ struct LookbookView: View {
 
     private var trimmedBoardName: String {
         newBoardName.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var lookbookBackground: some View {
-        LinearGradient(
-            colors: [
-                Color.blue.opacity(0.08),
-                Color.purple.opacity(0.06),
-                Color.clear
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .ignoresSafeArea()
     }
 
     private func entries(for summary: LookbookBoardSummary) -> [LookbookEntry] {
@@ -265,6 +277,20 @@ private struct LookbookBoardSummary: Identifiable, Hashable {
     let count: Int
     let isSystemBoard: Bool
     let coverPaths: [String]
+
+    var displayName: String {
+        LookbookBoard.displayName(for: name)
+    }
+
+    var statusTag: String {
+        if name == LookbookBoard.defaultBoardName {
+            return "最近更新"
+        }
+        if name == LookbookBoard.favoritesBoardName {
+            return "收藏"
+        }
+        return count > 0 ? "已整理" : "待整理"
+    }
 }
 
 private struct BoardCard: View {
@@ -278,17 +304,24 @@ private struct BoardCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(summary.name)
+                Text(summary.displayName)
                     .font(.headline)
                     .lineLimit(1)
 
-                Text("\(summary.count) references")
+                Text("\(summary.count) 个场景 · \(summary.count) 个参考包")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Text(summary.statusTag)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(SceneZeroTheme.accent)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(SceneZeroTheme.accentSoft, in: Capsule())
             }
         }
         .padding(10)
-        .liquidGlassRounded(cornerRadius: 20)
+        .groupedCard(cornerRadius: 18)
     }
 
     private var cover: some View {
@@ -360,9 +393,9 @@ private struct CreateBoardCard: View {
                 VStack(spacing: 8) {
                     Image(systemName: "plus")
                         .font(.system(size: 26, weight: .semibold))
-                    Text("Create Board")
+                    Text("新建灵感集")
                         .font(.headline)
-                    Text("Tap to start a new inspiration set")
+                    Text("为一个新故事慢慢收集")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -373,18 +406,18 @@ private struct CreateBoardCard: View {
             .aspectRatio(1.36, contentMode: .fit)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("New Inspiration Set")
+                Text("新建灵感集")
                     .font(.headline)
                     .lineLimit(1)
 
-                Text("Create a board")
+                Text("创建一个新的故事集合")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         .padding(10)
-        .liquidGlassRounded(cornerRadius: 20)
-        .accessibilityLabel("Create board")
+        .groupedCard(cornerRadius: 20)
+        .accessibilityLabel("新建灵感集")
     }
 }
 
@@ -405,14 +438,14 @@ private struct BoardDetailView: View {
 
             if isArranging {
                 arrangeList
-                    .background(lookbookBackground)
+                    .background(SceneZeroTheme.background)
             } else {
                 ScrollView {
                     if entries.isEmpty {
                         ContentUnavailableView(
-                            "No References",
+                            "暂无参考图",
                             systemImage: summary.systemImage,
-                            description: Text("Capture a scene or move references into this board.")
+                            description: Text("去现场取景，或把参考图移动到这个灵感集。")
                         )
                         .padding(.top, 80)
                         .frame(maxWidth: .infinity)
@@ -432,10 +465,10 @@ private struct BoardDetailView: View {
                         .padding(.bottom, 28)
                     }
                 }
-                .background(lookbookBackground)
+                .background(SceneZeroTheme.background)
             }
         }
-        .navigationTitle(summary.name)
+        .navigationTitle(summary.displayName)
         .navigationBarTitleDisplayMode(.large)
         .navigationBarBackButtonHidden(true)
         .onAppear {
@@ -456,7 +489,7 @@ private struct BoardDetailView: View {
 
             if canArrange {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(isArranging ? "Done" : "Arrange") {
+                    Button(isArranging ? "完成" : "排序") {
                         toggleArrangeMode()
                     }
                     .disabled(entries.isEmpty)
@@ -485,7 +518,7 @@ private struct BoardDetailView: View {
                 }
                 .onMove(perform: moveEntries)
             } footer: {
-                Text("Drag references into the scene order you want for this lookbook.")
+                Text("拖动参考图，整理这个灵感集里的场景顺序。")
             }
         }
         .scrollContentBackground(.hidden)
@@ -540,18 +573,6 @@ private struct BoardDetailView: View {
         try? modelContext.save()
     }
 
-    private var lookbookBackground: some View {
-        LinearGradient(
-            colors: [
-                Color.blue.opacity(0.08),
-                Color.purple.opacity(0.06),
-                Color.clear
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .ignoresSafeArea()
-    }
 }
 
 private struct BoardGridMetrics {
@@ -624,11 +645,7 @@ private struct ReferenceTile: View {
         }
         .padding(8)
         .frame(width: tileWidth, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(.white.opacity(0.5), lineWidth: 1)
-        }
+        .groupedCard(cornerRadius: 18)
     }
 
     private var imageWidth: CGFloat {
@@ -645,73 +662,63 @@ struct LookbookDetailView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var showsCopyConfirmation = false
+    @State private var showsPromptFields = false
+    @State private var editableNote: String
 
     let entry: LookbookEntry
     var boardNames: [String] = [LookbookBoard.defaultBoardName]
 
     private let imageStorage = ImageStorageService()
 
+    init(entry: LookbookEntry, boardNames: [String] = [LookbookBoard.defaultBoardName]) {
+        self.entry = entry
+        self.boardNames = boardNames
+        _editableNote = State(initialValue: entry.note)
+    }
+
     var body: some View {
         GeometryReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    if let image = imageStorage.load(relativePath: entry.imagePath) {
-                        DetailImageView(image: image, availableWidth: proxy.size.width - 32)
-                    }
+                    referenceSummaryCard(availableWidth: proxy.size.width)
 
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Prompt")
+                        Label("我当时想到", systemImage: "pencil")
                             .font(.headline)
-                        Text(entry.prompt)
-                            .font(.body)
-                            .textSelection(.enabled)
-
-                        VStack(spacing: 8) {
-                            Button {
-                                copyPrompt()
-                            } label: {
-                                Label("Copy Prompt", systemImage: "doc.on.doc")
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 11)
-                                    .contentShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
-                            .liquidGlassCapsule()
-
-                            if let imageURL = imageStorage.fileURL(relativePath: entry.imagePath) {
-                                ShareLink(item: imageURL) {
-                                    Label("Export Image", systemImage: "square.and.arrow.up")
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 11)
-                                        .contentShape(Capsule())
+                        TextEditor(text: $editableNote)
+                            .frame(minHeight: 108)
+                            .scrollContentBackground(.hidden)
+                            .padding(10)
+                            .background(SceneZeroTheme.secondaryBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(alignment: .topLeading) {
+                                if editableNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    Text("记录这个场景触发的故事、情绪或未来用途。")
+                                        .font(.body)
+                                        .foregroundStyle(.secondary.opacity(0.72))
+                                        .padding(.horizontal, 15)
+                                        .padding(.vertical, 18)
+                                        .allowsHitTesting(false)
                                 }
-                                .buttonStyle(.plain)
-                                .liquidGlassCapsule()
                             }
-
-                            if showsCopyConfirmation {
-                                Label("Prompt Copied", systemImage: "checkmark.circle.fill")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.green)
-                                    .frame(maxWidth: .infinity)
-                                    .transition(.opacity.combined(with: .move(edge: .top)))
-                            }
-                        }
                     }
                     .padding(14)
-                    .liquidGlassRounded(cornerRadius: 20)
+                    .groupedCard(cornerRadius: 20)
 
+                    structuredPromptCard
                     metadataCard
                 }
                 .padding()
             }
-            .background(lookbookBackground)
+            .background(SceneZeroTheme.background)
         }
-        .navigationTitle(entry.title)
+        .navigationTitle("参考图详情")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        .onChange(of: editableNote) { _, newValue in
+            entry.note = newValue
+            entry.prompt = PromptService.structuredPrompt(from: entry).fullText
+            try? modelContext.save()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 LookbookBackButton {
@@ -726,6 +733,7 @@ struct LookbookDetailView: View {
                 } label: {
                     Image(systemName: entry.isFavorite ? "heart.fill" : "heart")
                 }
+                .accessibilityLabel(entry.isFavorite ? "取消收藏参考图" : "收藏参考图")
 
                 Menu {
                     ForEach(boardNames, id: \.self) { boardName in
@@ -734,53 +742,148 @@ struct LookbookDetailView: View {
                             try? modelContext.save()
                         } label: {
                             if entry.boardName == boardName {
-                                Label(boardName, systemImage: "checkmark")
+                                Label(LookbookBoard.displayName(for: boardName), systemImage: "checkmark")
                             } else {
-                                Text(boardName)
+                                Text(LookbookBoard.displayName(for: boardName))
                             }
                         }
                     }
                 } label: {
                     Image(systemName: "folder")
                 }
+                .accessibilityLabel("移动到灵感集")
             }
         }
+    }
+
+    private func referenceSummaryCard(availableWidth: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 14) {
+                if let image = imageStorage.load(relativePath: entry.imagePath) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: min(112, availableWidth * 0.30), height: 86)
+                        .clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(entry.title)
+                        .font(.headline)
+                        .lineLimit(2)
+
+                    Text("来自现场取景 · \(entry.createdAt.formatted(date: .omitted, time: .shortened))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Text("\(entry.frameAspectRatio) · \(entry.lensPreset) · \(displayShotName)")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(SceneZeroTheme.infoAccent)
+                }
+            }
+
+            Text("保存到 \(LookbookBoard.displayName(for: entry.boardName))")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(SceneZeroTheme.accent)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(SceneZeroTheme.accentSoft, in: Capsule())
+        }
+        .padding(14)
+        .groupedCard(cornerRadius: 20)
+    }
+
+    private var structuredPromptCard: some View {
+        let structuredPrompt = PromptService.structuredPrompt(from: entry)
+        return VStack(alignment: .leading, spacing: 12) {
+            Label("结构化提示词", systemImage: "sparkle")
+                .font(.headline)
+                .foregroundStyle(SceneZeroTheme.promptAccent)
+
+            Text(structuredPrompt.base)
+                .font(.body)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            DisclosureGroup("查看全部字段", isExpanded: $showsPromptFields) {
+                VStack(alignment: .leading, spacing: 12) {
+                    StructuredPromptSection(title: "氛围补充", text: structuredPrompt.atmosphere)
+                    StructuredPromptSection(title: "镜头与空间", text: structuredPrompt.shotMetadata)
+                    StructuredPromptSection(title: "保留元素", text: structuredPrompt.keepElements)
+                }
+                .padding(.top, 8)
+            }
+            .font(.subheadline.weight(.semibold))
+
+            VStack(spacing: 8) {
+                Button {
+                    copyPrompt()
+                } label: {
+                    Label("复制提示词", systemImage: "doc.on.doc")
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .background(SceneZeroTheme.accent, in: Capsule())
+                .accessibilityLabel("复制结构化提示词")
+
+                if let imageURL = imageStorage.fileURL(relativePath: entry.imagePath) {
+                    ShareLink(item: imageURL) {
+                        Label("导出参考图", systemImage: "square.and.arrow.up")
+                            .frame(maxWidth: .infinity)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 11)
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(SceneZeroTheme.infoAccent)
+                    .background(SceneZeroTheme.infoAccentSoft.opacity(0.84), in: Capsule())
+                    .accessibilityLabel("导出参考图")
+                }
+
+                if showsCopyConfirmation {
+                    Label("提示词已复制", systemImage: "checkmark.circle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.green)
+                        .frame(maxWidth: .infinity)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+            .padding(.top, 4)
+        }
+        .padding(14)
+        .groupedCard(cornerRadius: 20)
+    }
+
+    private var displayShotName: String {
+        ShotType(rawValue: entry.shotType)?.displayName ?? entry.shotType
     }
 
     private var metadataCard: some View {
         Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
             let lightRecords = lightRecords(for: entry)
-            metadataRow("Board", entry.boardName)
-            metadataRow("Shot", entry.shotType)
-            metadataRow("Frame", entry.frameAspectRatio)
-            metadataRow("Lens", entry.lensPreset)
-            metadataRow("Guides", entry.showsCompositionGuides ? "On" : "Off")
-            metadataRow("Light", entry.lightPreset)
+            metadataRow("灵感集", LookbookBoard.displayName(for: entry.boardName))
+            metadataRow("景别", displayShotName)
+            metadataRow("画幅", entry.frameAspectRatio)
+            metadataRow("镜头", entry.lensPreset)
+            metadataRow("构图线", entry.showsCompositionGuides ? "开启" : "关闭")
+            metadataRow("灯光", entry.lightPreset)
             if lightRecords.count == 1, let light = lightRecords.first {
-                metadataRow("Color", light.colorTemperature?.rawValue ?? entry.colorTemperature)
-                metadataRow("Intensity", "\(Int((light.lightIntensity ?? entry.lightIntensity) * 100))%")
-                metadataRow("Spread", "\(Int((light.lightRadius ?? entry.lightRadius) * 100))%")
+                metadataRow("色温", light.colorTemperature?.displayName ?? entry.colorTemperature)
+                metadataRow("强度", "\(Int((light.lightIntensity ?? entry.lightIntensity) * 100))%")
+                metadataRow("范围", "\(Int((light.lightRadius ?? entry.lightRadius) * 100))%")
             } else if lightRecords.count > 1 {
-                metadataRow("Light Detail", "\(lightRecords.count) saved in layout")
+                metadataRow("灯位细节", "已保存 \(lightRecords.count) 个灯位")
             }
-            metadataRow("Look", entry.filterName)
+            metadataRow("色彩风格", FilterPreset(rawValue: entry.filterName)?.displayName ?? entry.filterName)
         }
         .font(.subheadline)
         .padding(14)
-        .liquidGlassRounded(cornerRadius: 20)
-    }
-
-    private var lookbookBackground: some View {
-        LinearGradient(
-            colors: [
-                Color.blue.opacity(0.10),
-                Color.purple.opacity(0.08),
-                Color.clear
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .ignoresSafeArea()
+        .groupedCard(cornerRadius: 20)
     }
 
     private func metadataRow(_ title: String, _ value: String) -> some View {
@@ -792,15 +895,11 @@ struct LookbookDetailView: View {
     }
 
     private func lightRecords(for entry: LookbookEntry) -> [SceneObjectRecord] {
-        guard let data = entry.layoutJSON.data(using: .utf8),
-              let records = try? JSONDecoder().decode([SceneObjectRecord].self, from: data) else {
-            return []
-        }
-        return PromptService.lightRecords(from: records)
+        PromptService.lightRecords(from: PromptService.layoutRecords(from: entry))
     }
 
     private func copyPrompt() {
-        UIPasteboard.general.string = entry.prompt
+        UIPasteboard.general.string = PromptService.structuredPrompt(from: entry).fullText
 
         withAnimation(.easeOut(duration: 0.18)) {
             showsCopyConfirmation = true
@@ -811,6 +910,24 @@ struct LookbookDetailView: View {
             withAnimation(.easeIn(duration: 0.18)) {
                 showsCopyConfirmation = false
             }
+        }
+    }
+}
+
+private struct StructuredPromptSection: View {
+    let title: String
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+            Text(text)
+                .font(.footnote)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
         }
     }
 }
@@ -849,7 +966,7 @@ private struct LookbookBackButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Back")
+        .accessibilityLabel("返回")
     }
 }
 

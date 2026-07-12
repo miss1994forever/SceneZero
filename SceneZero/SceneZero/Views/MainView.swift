@@ -11,14 +11,26 @@ struct MainView: View {
 
     @StateObject private var controller = ARSceneController()
     @State private var alertMessage: String?
+    @State private var alertTitle = "无法完成操作"
     @State private var activeAdjustment: CaptureAdjustment?
     @State private var pendingCapture: PendingLookbookCapture?
     @State private var showsDeleteConfirmation = false
+    @State private var showsCreativeSuggestion = false
 
     private let filterService = FilterService()
     private let imageStorage = ImageStorageService()
     private let framingOverlayService = FramingOverlayService()
     private let lightingOverlayService = LightingOverlayService()
+
+    private enum OverlayMetrics {
+        static let metadataBottomSpacing: CGFloat = 18
+        static let metadataCompactMaxWidth: CGFloat = 190
+        static let metadataRegularMaxWidth: CGFloat = 240
+        static let compactHorizontalPadding: CGFloat = 12
+        static let regularHorizontalPadding: CGFloat = 16
+        static let compactTrailingPadding: CGFloat = 14
+        static let regularTrailingPadding: CGFloat = 18
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -65,21 +77,21 @@ struct MainView: View {
                 }
             }
         }
-        .alert("SceneZero", isPresented: Binding(
+        .alert(alertTitle, isPresented: Binding(
             get: { alertMessage != nil },
             set: { if !$0 { alertMessage = nil } }
         )) {
-            Button("OK", role: .cancel) {}
+            Button("关闭", role: .cancel) {}
         } message: {
             Text(alertMessage ?? "")
         }
-        .alert("Delete Object?", isPresented: $showsDeleteConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Delete", role: .destructive) {
+        .alert("删除标记？", isPresented: $showsDeleteConfirmation) {
+            Button("取消", role: .cancel) {}
+            Button("删除", role: .destructive) {
                 controller.deleteSelectedObject()
             }
         } message: {
-            Text("This removes the selected object from the scene.")
+            Text("这会从当前取景场景中移除选中的人物、道具或灯光标记。")
         }
         .onChange(of: controller.selectedTool) { _, _ in
             dismissAdjustment()
@@ -91,17 +103,19 @@ struct MainView: View {
             controller.setRealityKitModelLightingEnabled(newValue)
         }
         .sheet(item: $pendingCapture) { capture in
-            SaveCaptureSheet(
+            CaptureReviewSheet(
                 capture: capture,
                 boardNames: movableBoardNames,
                 existingBoardNames: allBoardNames,
                 onCancel: {
                     pendingCapture = nil
                 },
-                onSave: { title, boardName in
-                    savePendingCapture(capture, title: title, boardName: boardName)
+                onSave: { title, boardName, note in
+                    savePendingCapture(capture, title: title, boardName: boardName, note: note)
                 }
             )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
     }
 
@@ -114,6 +128,9 @@ struct MainView: View {
             VStack(spacing: 0) {
                 topBar(isCompact: size.width < 430)
                 Spacer()
+                bottomMetadataBar(
+                    isCompact: size.width < 430
+                )
             }
 
             cameraControls(
@@ -130,12 +147,16 @@ struct MainView: View {
         safeAreaInsets: EdgeInsets,
         isLandscape: Bool
     ) -> some View {
-        let trailingPadding: CGFloat = isLandscape ? 18 : 12
-        let controlTrailingPadding = max(trailingPadding, safeAreaInsets.trailing + 8)
+        let controlTrailingPadding = controlTrailingPadding(
+            safeAreaInsets: safeAreaInsets,
+            isLandscape: isLandscape
+        )
         let shutterToPickerSpacing: CGFloat = 18
         let adjustmentToShutterSpacing: CGFloat = 30
         let shutterSize: CGFloat = isCompactWidth(availableSize.width) ? 62 : 68
         let adjustmentButtonSize: CGFloat = 44
+        let pickerFrameWidth: CGFloat = 76
+        let controlAxisFromTrailing = shutterSize / 2
         let railWidth = controlRailWidth(availableSize: availableSize, isLandscape: isLandscape)
         let pickerHeight = toolPickerHeight(availableSize: availableSize, isLandscape: isLandscape)
         let adjustmentHeight = adjustmentButtonColumnHeight(for: controller.selectedTool)
@@ -147,6 +168,10 @@ struct MainView: View {
             columnHeight: adjustmentHeight,
             isLandscape: isLandscape
         )
+
+        func alignedTrailingPadding(for controlWidth: CGFloat) -> CGFloat {
+            controlTrailingPadding + controlAxisFromTrailing - controlWidth / 2
+        }
 
         return ZStack(alignment: .trailing) {
             AdjustmentButtonColumn(
@@ -161,7 +186,7 @@ struct MainView: View {
                     showsDeleteConfirmation = true
                 }
             )
-            .padding(.trailing, controlTrailingPadding + max(0, (shutterSize - adjustmentButtonSize) / 2))
+            .padding(.trailing, alignedTrailingPadding(for: adjustmentButtonSize))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
             .offset(y: adjustmentOffset)
 
@@ -179,7 +204,7 @@ struct MainView: View {
                     )
                 }
             )
-            .padding(.trailing, controlTrailingPadding)
+            .padding(.trailing, alignedTrailingPadding(for: shutterSize))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
 
             ToolModePicker(
@@ -187,12 +212,16 @@ struct MainView: View {
                 onTap: dismissAdjustment,
                 displayHeight: pickerHeight
             )
-            .frame(width: 64, height: pickerHeight, alignment: .center)
-            .padding(.trailing, controlTrailingPadding + max(0, (shutterSize - 64) / 2))
+            .frame(width: pickerFrameWidth, height: pickerHeight, alignment: .center)
+            .padding(.trailing, alignedTrailingPadding(for: pickerFrameWidth))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
             .offset(y: shutterSize / 2 + shutterToPickerSpacing + pickerHeight / 2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func controlTrailingPadding(safeAreaInsets: EdgeInsets, isLandscape: Bool) -> CGFloat {
+        max(isLandscape ? 18 : 12, safeAreaInsets.trailing + 8)
     }
 
     private func isCompactWidth(_ width: CGFloat) -> Bool {
@@ -206,9 +235,9 @@ struct MainView: View {
     }
 
     private func toolPickerHeight(availableSize: CGSize, isLandscape: Bool) -> CGFloat {
-        let maxHeight = availableSize.height * (isLandscape ? 0.32 : 0.30)
-        let minimumHeight: CGFloat = isLandscape ? 132 : 178
-        return max(minimumHeight, min(240, maxHeight))
+        let maxHeight = availableSize.height * (isLandscape ? 0.46 : 0.36)
+        let minimumHeight: CGFloat = isLandscape ? 238 : 252
+        return max(minimumHeight, min(276, maxHeight))
     }
 
     private func framingContentInsets(
@@ -254,24 +283,45 @@ struct MainView: View {
 
     private func topBar(isCompact: Bool) -> some View {
         HStack(spacing: isCompact ? 8 : 12) {
-            Label(controller.statusText, systemImage: controller.isCapturing ? "camera.aperture" : "arkit")
+            Label(topBarStatusText, systemImage: topBarStatusIcon)
                 .font((isCompact ? Font.caption : Font.footnote).weight(.medium))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
-                .foregroundStyle(.primary)
+                .foregroundStyle(showsCreativeSuggestion ? SceneZeroTheme.accent : .primary)
 
             Spacer()
+
+            Button {
+                withAnimation(.snappy(duration: 0.2)) {
+                    showsCreativeSuggestion.toggle()
+                }
+            } label: {
+                Image(systemName: showsCreativeSuggestion ? "lightbulb.fill" : "lightbulb")
+                    .font(.system(size: isCompact ? 13 : 14, weight: .semibold))
+                    .foregroundStyle(showsCreativeSuggestion ? .black : .primary)
+                    .frame(width: isCompact ? 34 : 36, height: isCompact ? 34 : 36)
+                    .liquidGlassCircle(isSelected: showsCreativeSuggestion)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("创作建议")
+            .accessibilityValue(showsCreativeSuggestion ? "正在显示" : "未显示")
+            .accessibilityHint("切换顶部提示文字")
 
             Button {
                 controller.resetScene()
             } label: {
                 Image(systemName: "arrow.counterclockwise")
                     .font(.system(size: isCompact ? 13 : 14, weight: .semibold))
-                    .frame(width: isCompact ? 30 : 32, height: isCompact ? 30 : 32)
+                    .frame(width: isCompact ? 34 : 36, height: isCompact ? 34 : 36)
                     .liquidGlassCircle()
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Reset scene")
+            .accessibilityLabel("重置场景")
+            .accessibilityHint("清除当前取景中的人物、道具和灯光标记")
 
             Button {
                 withAnimation(.snappy(duration: 0.2)) {
@@ -280,17 +330,64 @@ struct MainView: View {
             } label: {
                 Image(systemName: controller.showsCompositionGuides ? "grid.circle.fill" : "grid.circle")
                     .font(.system(size: isCompact ? 13 : 14, weight: .semibold))
-                    .frame(width: isCompact ? 30 : 32, height: isCompact ? 30 : 32)
+                    .frame(width: isCompact ? 34 : 36, height: isCompact ? 34 : 36)
                     .liquidGlassCircle(isSelected: controller.showsCompositionGuides)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Composition guides")
+            .accessibilityLabel("构图辅助线")
+            .accessibilityHint("显示或隐藏画幅构图参考线")
         }
         .padding(.horizontal, isCompact ? 12 : 16)
         .padding(.vertical, isCompact ? 8 : 10)
         .liquidGlassCapsule(material: .regularMaterial, shadowOpacity: 0.16)
         .padding(.horizontal, isCompact ? 10 : 16)
         .padding(.top, 12)
+    }
+
+    private func bottomMetadataBar(
+        isCompact: Bool
+    ) -> some View {
+        Text(captureMetadataText)
+            .font(.caption2.weight(.semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .foregroundStyle(SceneZeroTheme.accent.opacity(0.92))
+            .shadow(color: .black.opacity(0.70), radius: 3, x: 0, y: 1)
+            .frame(
+                maxWidth: isCompact ? OverlayMetrics.metadataCompactMaxWidth : OverlayMetrics.metadataRegularMaxWidth,
+                alignment: .trailing
+            )
+            .padding(.leading, isCompact ? OverlayMetrics.compactHorizontalPadding : OverlayMetrics.regularHorizontalPadding)
+            .padding(.trailing, isCompact ? OverlayMetrics.compactTrailingPadding : OverlayMetrics.regularTrailingPadding)
+            .padding(.bottom, OverlayMetrics.metadataBottomSpacing)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    private var topBarStatusText: String {
+        showsCreativeSuggestion ? creativeSuggestionText : controller.statusText
+    }
+
+    private var topBarStatusIcon: String {
+        if showsCreativeSuggestion {
+            return "lightbulb.fill"
+        }
+        return controller.isCapturing ? "camera.aperture" : "arkit"
+    }
+
+    private var captureMetadataText: String {
+        "\(controller.frameAspectRatio.displayName) · \(controller.lensPreset.displayName) · \(controller.shotType.displayName)"
+    }
+
+    private var creativeSuggestionText: String {
+        if controller.hasLightingOverlay {
+            return "创作建议：保留灯光方向"
+        }
+        if controller.shotType == .wide {
+            return "创作建议：保留空间纵深"
+        }
+        return "创作建议：记录人物关系"
     }
 
     private func dismissAdjustment() {
@@ -338,11 +435,11 @@ struct MainView: View {
                     let lightSummary = PromptService.lightSummary(for: captured.layoutRecords)
                     pendingCapture = PendingLookbookCapture(
                         image: filteredImage,
-                        defaultTitle: "Scene \(Date().formatted(date: .numeric, time: .shortened))",
+                        defaultTitle: "现场参考 \(Date().formatted(date: .numeric, time: .shortened))",
                         prompt: captured.prompt,
                         shotType: captured.shotType.rawValue,
                         lightPreset: lightSummary,
-                        colorTemperature: captured.shouldRenderLightingOverlay ? captured.colorTemperature.rawValue : "None",
+                        colorTemperature: captured.shouldRenderLightingOverlay ? captured.colorTemperature.rawValue : "无",
                         lightIntensity: captured.lightIntensity,
                         lightRadius: captured.lightRadius,
                         frameAspectRatio: captured.frameAspectRatio.rawValue,
@@ -352,19 +449,23 @@ struct MainView: View {
                         layoutJSON: layoutJSON
                     )
                 } catch {
-                    alertMessage = "Could not prepare this capture. \(error.localizedDescription)"
+                    alertTitle = "无法生成参考图"
+                    alertMessage = "无法生成这张参考图。\(error.localizedDescription)"
                 }
             case .failure:
-                alertMessage = "Capture failed. Try scanning a surface again."
+                alertTitle = "取景失败"
+                alertMessage = "取景失败，请重新扫描平面。"
             }
         }
     }
 
+    @discardableResult
     private func savePendingCapture(
         _ capture: PendingLookbookCapture,
         title: String,
-        boardName: String
-    ) {
+        boardName: String,
+        note: String
+    ) -> Error? {
         do {
             let targetBoardName = boardName.trimmingCharacters(in: .whitespacesAndNewlines)
             let resolvedBoardName = targetBoardName.isEmpty ? LookbookBoard.defaultBoardName : targetBoardName
@@ -372,10 +473,11 @@ struct MainView: View {
             ensureBoardExists(named: resolvedBoardName)
 
             let imagePath = try imageStorage.save(capture.image)
+            let structuredPrompt = capture.structuredPrompt(note: note)
             let entry = LookbookEntry(
                 title: title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? capture.defaultTitle : title,
                 imagePath: imagePath,
-                prompt: capture.prompt,
+                prompt: structuredPrompt.fullText,
                 shotType: capture.shotType,
                 lightPreset: capture.lightPreset,
                 colorTemperature: capture.colorTemperature,
@@ -387,14 +489,17 @@ struct MainView: View {
                 filterName: capture.filterName,
                 layoutJSON: capture.layoutJSON,
                 boardName: resolvedBoardName,
-                sortIndex: nextSortIndex(for: resolvedBoardName)
+                sortIndex: nextSortIndex(for: resolvedBoardName),
+                note: note.trimmingCharacters(in: .whitespacesAndNewlines)
             )
             modelContext.insert(entry)
             try modelContext.save()
             pendingCapture = nil
-            alertMessage = "Saved to Lookbook."
+            alertTitle = "参考包已保存"
+            alertMessage = "已保存到灵感库。"
+            return nil
         } catch {
-            alertMessage = "Could not save this capture. \(error.localizedDescription)"
+            return error
         }
     }
 
@@ -434,26 +539,53 @@ private struct PendingLookbookCapture: Identifiable {
     let showsCompositionGuides: Bool
     let filterName: String
     let layoutJSON: String
+
+    func layoutRecords() -> [SceneObjectRecord] {
+        guard let data = layoutJSON.data(using: .utf8),
+              let records = try? JSONDecoder().decode([SceneObjectRecord].self, from: data) else {
+            return []
+        }
+        return records
+    }
+
+    func structuredPrompt(note: String = "") -> StructuredPrompt {
+        let records = layoutRecords()
+        return PromptService.makeStructuredPrompt(
+            shotType: ShotType(rawValue: shotType) ?? .wide,
+            frameAspectRatio: FrameAspectRatio(rawValue: frameAspectRatio) ?? .cinema239,
+            lensPreset: LensPreset(rawValue: lensPreset) ?? .standard35,
+            lightRecords: records,
+            filterPreset: FilterPreset(rawValue: filterName) ?? .realistic,
+            hasSubject: !PromptService.subjectRecords(from: records).isEmpty,
+            locationDescription: defaultTitle,
+            userNote: note
+        )
+    }
 }
 
-private struct SaveCaptureSheet: View {
+private struct CaptureReviewSheet: View {
     let capture: PendingLookbookCapture
     let boardNames: [String]
     let existingBoardNames: [String]
     let onCancel: () -> Void
-    let onSave: (String, String) -> Void
+    let onSave: (String, String, String) -> Error?
 
     @State private var title: String
     @State private var selectedBoardName: String
     @State private var createsNewBoard = false
     @State private var newBoardName = ""
+    @State private var note = ""
+    @State private var isSaving = false
+    @State private var saveError: String?
+    @State private var showsDiscardConfirmation = false
+    @State private var showsPromptDetails = false
 
     init(
         capture: PendingLookbookCapture,
         boardNames: [String],
         existingBoardNames: [String],
         onCancel: @escaping () -> Void,
-        onSave: @escaping (String, String) -> Void
+        onSave: @escaping (String, String, String) -> Error?
     ) {
         self.capture = capture
         self.boardNames = boardNames
@@ -466,57 +598,178 @@ private struct SaveCaptureSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    Image(uiImage: capture.image)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxHeight: 220)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .frame(maxWidth: .infinity)
-                        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
-                }
-
-                Section {
-                    TextField(capture.defaultTitle, text: $title)
-                } header: {
-                    Text("Reference")
-                } footer: {
-                    Text("Name is optional. SceneZero will use the generated scene name when this is empty.")
-                }
-
-                Section {
-                    Picker("Save to", selection: $selectedBoardName) {
-                        ForEach(boardNames, id: \.self) { boardName in
-                            Text(boardName).tag(boardName)
-                        }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    reviewSection(title: "画面", detail: "现场构图与镜头信息") {
+                        referenceCard
                     }
-                    .disabled(createsNewBoard)
 
-                    Toggle("Create New Lookbook", isOn: $createsNewBoard)
-
-                    if createsNewBoard {
-                        TextField("Lookbook Name", text: $newBoardName)
+                    reviewSection(title: "创作意图", detail: "先留下你此刻的判断，再让 Prompt 承接它") {
+                        thoughtCard
                     }
-                } header: {
-                    Text("Lookbook")
+
+                    reviewSection(title: "归档", detail: "先保存到灵感库，后续可继续整理") {
+                        saveTargetCard
+                    }
+
+                    promptCard
+
+                    Button {
+                        saveReferencePackage()
+                    } label: {
+                        saveButtonLabel
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white)
+                    .background(SceneZeroTheme.accent, in: Capsule())
+                    .disabled(!canSave || isSaving)
+                    .opacity(canSave && !isSaving ? 1 : 0.45)
+
+                    if let saveError {
+                        Label("无法保存：\(saveError)", systemImage: "exclamationmark.triangle.fill")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 4)
+                            .accessibilityAddTraits(.isStaticText)
+                    }
                 }
+                .padding()
             }
-            .navigationTitle("Save Reference")
+            .background(SceneZeroTheme.background)
+            .navigationTitle("参考图详情")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", action: onCancel)
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        onSave(resolvedTitle, resolvedBoardName)
+                    Button("取消") {
+                        requestDismissal()
                     }
-                    .disabled(!canSave)
                 }
             }
         }
+        .interactiveDismissDisabled(hasUnsavedChanges || isSaving)
+        .confirmationDialog(
+            "放弃这次参考包？",
+            isPresented: $showsDiscardConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("放弃修改", role: .destructive, action: onCancel)
+            Button("继续编辑", role: .cancel) {}
+        } message: {
+            Text("标题、创作意图和归档位置尚未保存。")
+        }
+    }
+
+    private var saveButtonLabel: some View {
+        Group {
+            if isSaving {
+                ProgressView()
+                    .tint(.white)
+                    .accessibilityLabel("正在保存参考包")
+            } else {
+                Text("保存参考包")
+                    .font(.headline)
+            }
+        }
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 50)
+            .contentShape(Capsule())
+    }
+
+    private var referenceCard: some View {
+        HStack(spacing: 14) {
+            Image(uiImage: capture.image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 92, height: 72)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 8) {
+                TextField(capture.defaultTitle, text: $title)
+                    .font(.headline)
+                    .textFieldStyle(.plain)
+
+                Text(metadataText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text("来自现场取景 · 今天")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(SceneZeroTheme.infoAccent)
+            }
+        }
+        .padding(14)
+        .groupedCard(cornerRadius: 20)
+    }
+
+    private var thoughtCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("我当时想到", systemImage: "pencil")
+                .font(.headline)
+            TextEditor(text: $note)
+                .frame(minHeight: 112)
+                .scrollContentBackground(.hidden)
+                .padding(10)
+                .background(SceneZeroTheme.secondaryBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(alignment: .topLeading) {
+                    if note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("记录这个场景让你想到的故事、人物关系或情绪。")
+                            .font(.body)
+                            .foregroundStyle(.secondary.opacity(0.72))
+                            .padding(.horizontal, 15)
+                            .padding(.vertical, 18)
+                            .allowsHitTesting(false)
+                    }
+                }
+        }
+        .padding(14)
+        .groupedCard(cornerRadius: 20)
+    }
+
+    private var promptCard: some View {
+        let structuredPrompt = capture.structuredPrompt(note: note)
+        return DisclosureGroup(isExpanded: $showsPromptDetails) {
+            VStack(alignment: .leading, spacing: 12) {
+                PromptSection(title: "基础提示词", text: structuredPrompt.base)
+                PromptSection(title: "氛围补充", text: structuredPrompt.atmosphere)
+                PromptSection(title: "镜头与空间", text: structuredPrompt.shotMetadata)
+            }
+            .padding(.top, 8)
+        } label: {
+            Label("预览结构化提示词", systemImage: "sparkle")
+                .font(.headline)
+                .foregroundStyle(SceneZeroTheme.promptAccent)
+        }
+        .padding(14)
+        .groupedCard(cornerRadius: 20)
+    }
+
+    private var saveTargetCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("保存到", selection: $selectedBoardName) {
+                ForEach(boardNames, id: \.self) { boardName in
+                    Text(LookbookBoard.displayName(for: boardName)).tag(boardName)
+                }
+            }
+            .disabled(createsNewBoard)
+
+            Toggle("新建灵感集", isOn: $createsNewBoard)
+
+            if createsNewBoard {
+                TextField("灵感集名称", text: $newBoardName)
+                    .textFieldStyle(.roundedBorder)
+            }
+        }
+        .padding(14)
+        .groupedCard(cornerRadius: 18)
+    }
+
+    private var metadataText: String {
+        let frame = FrameAspectRatio(rawValue: capture.frameAspectRatio)?.displayName ?? capture.frameAspectRatio
+        let lens = LensPreset(rawValue: capture.lensPreset)?.displayName ?? capture.lensPreset
+        let shot = ShotType(rawValue: capture.shotType)?.displayName ?? capture.shotType
+        return "\(frame) · \(lens) · \(shot)"
     }
 
     private var resolvedTitle: String {
@@ -538,6 +791,63 @@ private struct SaveCaptureSheet: View {
         let candidate = newBoardName.trimmingCharacters(in: .whitespacesAndNewlines)
         return !candidate.isEmpty && !existingBoardNames.contains {
             $0.caseInsensitiveCompare(candidate) == .orderedSame
+        }
+    }
+
+    private var hasUnsavedChanges: Bool {
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || createsNewBoard
+            || selectedBoardName != (boardNames.first ?? LookbookBoard.defaultBoardName)
+    }
+
+    private func reviewSection<Content: View>(
+        title: String,
+        detail: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.title3.weight(.semibold))
+            Text(detail)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            content()
+        }
+    }
+
+    private func requestDismissal() {
+        if hasUnsavedChanges {
+            showsDiscardConfirmation = true
+        } else {
+            onCancel()
+        }
+    }
+
+    private func saveReferencePackage() {
+        saveError = nil
+        isSaving = true
+
+        if let error = onSave(resolvedTitle, resolvedBoardName, note) {
+            saveError = error.localizedDescription
+            isSaving = false
+        }
+    }
+}
+
+private struct PromptSection: View {
+    let title: String
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+            Text(text)
+                .font(.footnote)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -575,7 +885,7 @@ private struct ShutterButton: View {
         }
         .buttonStyle(.plain)
         .disabled(isCapturing)
-        .accessibilityLabel(isCapturing ? "Capturing" : "Capture")
+        .accessibilityLabel(isCapturing ? "正在取景" : "取景")
     }
 }
 
@@ -592,6 +902,21 @@ private enum CaptureAdjustment: String, Identifiable, Equatable {
     case filter = "Filter"
 
     var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .asset: "样式"
+        case .reset: "重置大小"
+        case .frame: "画幅"
+        case .lens: "镜头"
+        case .shot: "景别"
+        case .direction: "灯位"
+        case .color: "色温"
+        case .intensity: "强度"
+        case .spread: "范围"
+        case .filter: "色彩"
+        }
+    }
 
     var systemImage: String {
         switch self {
@@ -652,7 +977,7 @@ private struct AdjustmentButtonColumn: View {
                                 .liquidGlassCircle(isSelected: activeAdjustment == adjustment)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(adjustment.rawValue)
+                        .accessibilityLabel(adjustment.displayName)
                     }
                     .frame(maxWidth: maxWidth, alignment: .trailing)
                 }
@@ -666,7 +991,7 @@ private struct AdjustmentButtonColumn: View {
                             .liquidGlassCircle()
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Delete selected object")
+                    .accessibilityLabel("删除选中标记")
                     .frame(maxWidth: maxWidth, alignment: .trailing)
                     .transition(.scale(scale: 0.92, anchor: .trailing).combined(with: .opacity))
                 }
@@ -745,15 +1070,18 @@ private struct InlineAdjustmentBar: View {
                         HStack(spacing: 5) {
                             Image(systemName: preset.systemImage)
                                 .font(.system(size: 13, weight: .semibold))
-                            Text(shortTitle(for: preset.rawValue))
+                            Text(preset.displayName)
                                 .font(.caption.weight(.semibold))
                                 .lineLimit(1)
                         }
                         .padding(.horizontal, 9)
                         .frame(height: 34)
                         .liquidGlassChip(isSelected: isSelected(preset))
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(preset.displayName)
                 }
             }
         }
@@ -772,15 +1100,18 @@ private struct InlineAdjustmentBar: View {
                         selection.wrappedValue = option
                         onClose()
                     } label: {
-                        Text(option.rawValue)
+                        Text(displayTitle(for: option))
                             .font(.caption.weight(.semibold))
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
                             .padding(.horizontal, 10)
                             .frame(height: 34)
                             .liquidGlassChip(isSelected: selection.wrappedValue == option)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(displayTitle(for: option))
                 }
             }
         }
@@ -804,10 +1135,26 @@ private struct InlineAdjustmentBar: View {
         controller.assetPreset(for: controller.selectedTool) == preset
     }
 
-    private func shortTitle(for title: String) -> String {
-        title
-            .replacingOccurrences(of: "Subject ", with: "")
-            .replacingOccurrences(of: "Prop ", with: "")
+    private func displayTitle<Option: RawRepresentable>(for option: Option) -> String where Option.RawValue == String {
+        if let option = option as? FrameAspectRatio {
+            return option.displayName
+        }
+        if let option = option as? LensPreset {
+            return option.displayName
+        }
+        if let option = option as? ShotType {
+            return option.displayName
+        }
+        if let option = option as? FilterPreset {
+            return option.displayName
+        }
+        if let option = option as? LightPreset {
+            return option.displayName
+        }
+        if let option = option as? ColorTemperature {
+            return option.displayName
+        }
+        return option.rawValue
     }
 }
 
@@ -826,26 +1173,44 @@ private struct ToolModePicker: View {
     private let dragDamping: CGFloat = 0.62
 
     var body: some View {
-        ZStack {
-            Capsule()
-                .frame(width: 56, height: 56)
-                .foregroundStyle(.clear)
-                .overlay {
-                    Capsule()
-                        .stroke(.white.opacity(0.34), lineWidth: 1)
-                }
+        VStack(spacing: 7) {
+            Text(selectedTool.displayName)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .liquidGlassCapsule(
+                    material: .ultraThinMaterial,
+                    shadowOpacity: 0.10,
+                    tint: SceneZeroTheme.accent,
+                    tintOpacity: 0.14
+                )
 
-            VStack(spacing: itemSpacing - itemSize) {
+            VStack(spacing: 7) {
                 ForEach(tools) { tool in
-                    toolIcon(tool)
+                    Button {
+                        onTap()
+                        selectedTool = tool
+                    } label: {
+                        toolIcon(tool)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("选择\(tool.displayName)")
                 }
             }
-            .offset(y: pickerOffset)
+            .padding(.vertical, 7)
+            .padding(.horizontal, 6)
+            .liquidGlassCapsule(
+                material: .ultraThinMaterial,
+                shadowOpacity: 0.14,
+                tint: SceneZeroTheme.accent,
+                tintOpacity: 0.22
+            )
         }
-        .frame(width: 64, height: displayHeight)
-        .clipped()
+        .frame(width: 72, height: displayHeight, alignment: .center)
         .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
         .gesture(toolSelectionGesture)
         .animation(.smooth(duration: 0.14), value: previewIndex)
         .animation(.snappy(duration: 0.2), value: selectedTool)
@@ -908,8 +1273,8 @@ private struct ToolModePicker: View {
             .frame(width: itemSize, height: itemSize)
             .background(
                 Circle()
-                    .fill(isActive ? Color.accentColor : Color.clear)
+                    .fill(isActive ? SceneZeroTheme.accent : Color.clear)
             )
-            .accessibilityLabel("Select \(tool.rawValue)")
+            .contentShape(Circle())
     }
 }
