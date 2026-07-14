@@ -31,53 +31,10 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		E0F096093003D0330062B3BE /* Exceptions for "SceneZero" folder in "SceneZeroV2" target */ = {
+		E0F0960B3003D0350062B3BE /* Exceptions for "SceneZeroV2" folder in "SceneZeroV2" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				AR/ARSceneController.swift,
-				AR/ARViewContainer.swift,
-				Assets.xcassets,
-				Assets3D/Bed.usdz,
-				Assets3D/Bookcase.usdz,
-				Assets3D/Chair.usdz,
-				Assets3D/Desk.usdz,
-				Assets3D/Human.usdz,
-				Assets3D/LampStand.usdz,
-				Assets3D/NightStand.usdz,
-				Assets3D/README.md,
-				Assets3D/Sofa.usdz,
-				Assets3D/Table.usdz,
-				ContentView.swift,
-				Models/ImportedMediaFile.swift,
-				"Models/LookbookEntry+Inspiration.swift",
-				Models/SceneModels.swift,
-				"Preview Content/Preview Assets.xcassets",
-				SceneZeroApp.swift,
-				Services/AudioRecordingController.swift,
-				Services/FilterService.swift,
-				Services/FramingOverlayService.swift,
-				Services/ImageStorageService.swift,
-				Services/InspirationFileMaintenanceService.swift,
-				Services/InspirationMediaStorageService.swift,
-				Services/InspirationMigrationService.swift,
-				Services/LightingOverlayService.swift,
-				Services/PromptService.swift,
-				Views/AudioRecorderSheet.swift,
-				Views/CompactAudioPlayer.swift,
-				Views/FramingOverlayView.swift,
-				Views/InspirationAssetView.swift,
-				Views/InspirationCard.swift,
-				Views/InspirationComposerSheet.swift,
-				Views/LightingOverlayView.swift,
-				Views/LiquidGlassStyle.swift,
-				Views/LocalVideoPlayer.swift,
-				Views/LookbookView.swift,
-				Views/MainView.swift,
-				Views/ProfileView.swift,
 				Views/ProjectView.swift,
-				Views/RootTabView.swift,
-				Views/SceneZeroTheme.swift,
-				Views/WaterfallLayout.swift,
 			);
 			target = E0F096013003D0320062B3BE /* SceneZeroV2 */;
 		};
@@ -86,9 +43,6 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		E0C26E662FD6F4A400E8BCA0 /* SceneZero */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				E0F096093003D0330062B3BE /* Exceptions for "SceneZero" folder in "SceneZeroV2" target */,
-			);
 			path = SceneZero;
 			sourceTree = "<group>";
 		};
@@ -100,6 +54,14 @@
 		E0C26E812FD6F4A600E8BCA0 /* SceneZeroUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = SceneZeroUITests;
+			sourceTree = "<group>";
+		};
+		E0F0960A3003D0340062B3BE /* SceneZeroV2 */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				E0F0960B3003D0350062B3BE /* Exceptions for "SceneZeroV2" folder in "SceneZeroV2" target */,
+			);
+			path = SceneZeroV2;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -140,6 +102,7 @@
 			isa = PBXGroup;
 			children = (
 				E0C26E662FD6F4A400E8BCA0 /* SceneZero */,
+				E0F0960A3003D0340062B3BE /* SceneZeroV2 */,
 				E0C26E772FD6F4A600E8BCA0 /* SceneZeroTests */,
 				E0C26E812FD6F4A600E8BCA0 /* SceneZeroUITests */,
 				E0C26E652FD6F4A400E8BCA0 /* Products */,
@@ -241,7 +204,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				E0C26E662FD6F4A400E8BCA0 /* SceneZero */,
+				E0F0960A3003D0340062B3BE /* SceneZeroV2 */,
 			);
 			name = SceneZeroV2;
 			packageProductDependencies = (
@@ -627,7 +590,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"SceneZero/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"SceneZeroV2/Preview Content\"";
 				DEVELOPMENT_TEAM = 7RLKS54LSY;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -659,7 +622,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"SceneZero/Preview Content\"";
+				DEVELOPMENT_ASSET_PATHS = "\"SceneZeroV2/Preview Content\"";
 				DEVELOPMENT_TEAM = 7RLKS54LSY;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
