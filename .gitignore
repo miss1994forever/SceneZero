@@ -10,3 +10,23 @@ SceneZero答辩.pptx
 比赛文档/
 以 AI Coding 为核心的 UX 设计流程实现.pdf
 课程作业答辩/
+
+# macOS
+.DS_Store
+
+# Xcode user-specific state
+xcuserdata/
+*.xcuserstate
+
+# Xcode build output
+DerivedData/
+build/
+*.dSYM
+*.dSYM.zip
+*.ipa
+
+# Local secrets and configuration
+.env
+.env.*
+!.env.example
+*.xcconfig.local
